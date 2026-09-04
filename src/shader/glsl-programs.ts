@@ -4,11 +4,17 @@
 //  Tiny stub files (gbuffers_terrain.vsh etc.) just #include these.
 // ============================================================================
 
+import { AUTHOR, REPO_URL, VERSION } from './version';
+
 const VIEW_DIR_FROM_FRAGCOORD = `    vec2 ndc = (gl_FragCoord.xy / vec2(viewWidth, viewHeight)) * 2.0 - 1.0;
     vec4 tmp = gbufferProjectionInverse * vec4(ndc, 1.0, 1.0);
     vec3 dir = normalize(mat3(gbufferModelViewInverse) * (tmp.xyz / tmp.w));`;
 
-export const PROG_TERRAIN = `// program/gbuffers_terrain.glsl — solid & cutout blocks (also block entities and block cracks)
+const H = (file: string) => `// Vivid Lite Shaders v${VERSION} — ${file}
+// Author: ${AUTHOR} | ${REPO_URL}`;
+
+export const PROG_TERRAIN = `${H('program/gbuffers_terrain.glsl')}
+// Solid & cutout blocks (also block entities and cracks). Most expensive program.
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
@@ -79,7 +85,8 @@ void main() {
 #endif
 `;
 
-export const PROG_WATER = `// program/gbuffers_water.glsl — water, stained glass, ice, portals (translucent pass)
+export const PROG_WATER = `${H('program/gbuffers_water.glsl')}
+// Water, stained glass, ice, portals (translucent pass).
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
@@ -142,8 +149,19 @@ void main() {
 #endif
         float waterDist = length(feetPos);
 #if defined WATER_WAVES && !defined SIMPLE_WATER
-        // skip wave computation past CULL_DISTANCE — invisible anyway on weak GPUs
-        if (abs(normal.y) > 0.5 && waterDist < CULL_DISTANCE) normal = getWaveNormal(worldPos, frameTimeCounter, normal);
+        // skip wave past CULL_DISTANCE AND past WAVE_CUTOFF — saves cos() calls
+        if (abs(normal.y) > 0.5 && waterDist < CULL_DISTANCE && waterDist < WAVE_CUTOFF) {
+#if SMALL_WAVE
+            // single-wave fallback (1 cos + 2 muls instead of 3 cos + 5 muls)
+            float t = frameTimeCounter * 0.9;
+            vec2  p = worldPos.xz;
+            float c1 = cos(dot(p, vec2(0.9, 0.35)) * 2.1 + t * 1.6);
+            vec3  n  = vec3(-0.0945 * 0.9 * c1, 1.0, -0.0945 * 0.35 * c1);
+            normal = normalize(n);
+#else
+            normal = getWaveNormal(worldPos, frameTimeCounter, normal);
+#endif
+        }
 #endif
         vec3  lit   = getLighting(albedo, normal, lmcoord, feetPos, 0.0, 0.0, rainStrength, sunDirW, lightDirW, fogLin);
         float alpha = WATER_ALPHA;
@@ -151,20 +169,32 @@ void main() {
 #if defined WATER_REFLECTION && !defined SIMPLE_WATER
         // also cull expensive reflection past CULL_DISTANCE
         if (waterDist < CULL_DISTANCE) {
-            vec3  viewDir = normalize(feetPos);
+#ifdef PRECOMPUTED_VIEW
+            // Pre-compute viewDir once (was being normalized inside the block before)
+            vec3 viewDir = feetPos * inversesqrt(dot(feetPos, feetPos));
+#else
+            vec3 viewDir = normalize(feetPos);
+#endif
             vec3  n       = dot(normal, viewDir) > 0.0 ? -normal : normal;
             float NdotV   = sat(dot(-viewDir, n));
-            float fresnel = 0.06 + 0.94 * pow(1.0 - NdotV, 3.0);
-            vec3  refl    = reflect(viewDir, n);
-            refl.y        = max(refl.y, 0.02);
-            refl          = normalize(refl);
+            // ── replace pow() with 3 muls (pow(x, 3) = x*x*x) ──
+            float oneMinusN = 1.0 - NdotV;
+            float fresnel = 0.06 + 0.94 * (oneMinusN * oneMinusN * oneMinusN);
+            // ── reflect() inlined, then re-normalized (skip renormalize when possible) ──
+            vec3 refl = viewDir - n * (2.0 * dot(viewDir, n));
+            refl.y    = max(refl.y, 0.02);
+            refl      = normalize(refl);
 
             vec3 lightCol, ambientCol;
             getLightColors(sunDirW.y, rainStrength, fogLin, lightCol, ambientCol);
             float skyVis  = smoothstep(0.3, 0.9, lmcoord.y);
             vec3  reflCol = getSkyColor(refl, sunDirW, rainStrength, fogLin) * skyVis;
+#ifndef SKIP_SPECULAR
             float spec    = pow(sat(dot(refl, lightDirW)), 180.0) * 2.0;
             vec3  specular = lightCol * spec * gShadow * gSkyMask;
+#else
+            vec3  specular = vec3(0.0);
+#endif
 
             if (isEyeInWater == 1) { fresnel *= 0.3; reflCol = lit; }
             lit   = mix(lit, reflCol, fresnel) + specular;
@@ -186,7 +216,8 @@ void main() {
 #endif
 `;
 
-export const PROG_ENTITIES = `// program/gbuffers_entities.glsl — mobs, players, items (and the hand with HAND defined)
+export const PROG_ENTITIES = `${H('program/gbuffers_entities.glsl')}
+// Mobs, players, items (and the hand with HAND defined).
 #ifdef HAND
     #define NO_SHADOWS
 #endif
@@ -238,7 +269,8 @@ void main() {
 #endif
 `;
 
-export const PROG_TEXTURED_LIT = `// program/gbuffers_textured_lit.glsl — particles and other lit billboards (no shadow lookups: cheap)
+export const PROG_TEXTURED_LIT = `${H('program/gbuffers_textured_lit.glsl')}
+// Particles and other lit billboards (no shadow lookups: cheap).
 #define NO_SHADOWS
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
@@ -276,6 +308,7 @@ void main() {
     vec3  fogLin = toLinear(fogColor);
     float eyeSky = float(eyeBrightnessSmooth.y) / 240.0;
 
+    // Use unit up vector directly — saves 1 normalize() in the hottest path (particles)
     vec3 lit = getLighting(toLinear(color.rgb), vec3(0.0, 1.0, 0.0), lmcoord, feetPos, 1.0, 0.0, rainStrength, sunDirW, lightDirW, fogLin);
     lit = applyFog(lit, feetPos, sunDirW, rainStrength, fogLin, eyeSky);
 
@@ -285,7 +318,8 @@ void main() {
 #endif
 `;
 
-export const PROG_TEXTURED = `// program/gbuffers_textured.glsl — unlit textured things (beacon beam, enchant glint, spider eyes)
+export const PROG_TEXTURED = `${H('program/gbuffers_textured.glsl')}
+// Unlit textured things (beacon beam, enchant glint, spider eyes).
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
 
@@ -311,7 +345,8 @@ void main() {
 #endif
 `;
 
-export const PROG_BASIC = `// program/gbuffers_basic.glsl — lines, block selection outline, leads, world border
+export const PROG_BASIC = `${H('program/gbuffers_basic.glsl')}
+// Lines, block selection outline, leads, world border.
 #include "/lib/common.glsl"
 
 varying vec4 glcolor;
@@ -333,7 +368,8 @@ void main() {
 #endif
 `;
 
-export const PROG_SKYBASIC = `// program/gbuffers_skybasic.glsl — procedural sky gradient, round sun, stars
+export const PROG_SKYBASIC = `${H('program/gbuffers_skybasic.glsl')}
+// Procedural sky gradient, round sun, stars, Milky Way, moon halo.
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
@@ -366,9 +402,10 @@ ${VIEW_DIR_FROM_FRAGCOORD}
     sky += disk * (lightCol * 6.0 + vec3(0.15)) * (1.0 - rainStrength) * step(-0.03, dir.y);
 #endif
 #ifdef STARS
-    // ── star field v1.1.0: two layers + twinkle + optional Milky Way band ──
+    // ── star field: two layers + twinkle + optional Milky Way band ──
+    // Pre-cache: single mad for the night gate
     float starsF = getNightFactor(sunDirW.y) * (1.0 - rainStrength) * smoothstep(-0.02, 0.18, dir.y);
-    if (starsF > 0.0 && STAR_BRIGHTNESS > 0.001) {
+    if (starsF > 0.0 && STAR_BRIGHTNESS > 0.001 && starsF > 0.01) {
         // bright layer
         vec3  p1 = dir * 110.0;
         float h1 = hash13(floor(p1));
@@ -409,7 +446,8 @@ ${VIEW_DIR_FROM_FRAGCOORD}
 #endif
 `;
 
-export const PROG_SKYTEXTURED = `// program/gbuffers_skytextured.glsl — the moon (vanilla sun is hidden), End sky
+export const PROG_SKYTEXTURED = `${H('program/gbuffers_skytextured.glsl')}
+// The moon (vanilla sun is hidden), End sky.
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
@@ -444,7 +482,8 @@ ${VIEW_DIR_FROM_FRAGCOORD}
 #endif
 `;
 
-export const PROG_CLOUDS = `// program/gbuffers_clouds.glsl — vanilla clouds, lit by our sky and sun colors
+export const PROG_CLOUDS = `${H('program/gbuffers_clouds.glsl')}
+// Vanilla clouds, lit by our sky and sun colors.
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
@@ -486,7 +525,8 @@ void main() {
 #endif
 `;
 
-export const PROG_WEATHER = `// program/gbuffers_weather.glsl — rain and snow
+export const PROG_WEATHER = `${H('program/gbuffers_weather.glsl')}
+// Rain and snow.
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
@@ -530,7 +570,8 @@ void main() {
 #endif
 `;
 
-export const PROG_SHADOW = `// program/shadow.glsl — shadow map pass (depth + tint for colored shadows), with waving plants
+export const PROG_SHADOW = `${H('program/shadow.glsl')}
+// Shadow map pass (depth + tint for colored shadows), with waving plants.
 #include "/lib/common.glsl"
 
 uniform sampler2D gtexture;
@@ -578,7 +619,8 @@ void main() {
 #endif
 `;
 
-export const PROG_COMPOSITE = `// program/composite.glsl — water depth fog. The only pass that reads the depth buffer (WATER_FOG option).
+export const PROG_COMPOSITE = `${H('program/composite.glsl')}
+// Water depth fog. The only pass that reads the depth buffer (WATER_FOG option).
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
@@ -632,7 +674,8 @@ void main() {
 #endif
 `;
 
-export const PROG_COMPOSITE1 = `// program/composite1.glsl — bloom. Two small blurred tiles (1/4 and 1/16 res) read from the mip chain,
+export const PROG_COMPOSITE1 = `${H('program/composite1.glsl')}
+// Bloom. Two small blurred tiles (1/4 and 1/16 res) read from the mip chain.
 // (the .fsh stub enables GL_ARB_shader_texture_lod for texture2DLod)
 // so the whole effect costs a fraction of one full-screen pass. Disabled entirely when BLOOM is off.
 #include "/lib/uniforms.glsl"
@@ -655,6 +698,18 @@ uniform sampler2D colortex0;
 vec3 bloomTile(vec2 uv, float lod, float scale) {
     vec2 px  = vec2(1.0 / viewWidth, 1.0 / viewHeight) * scale;
     vec3 sum = vec3(0.0);
+#ifdef HALF_RES_BLOOM
+    // ── 3×3 instead of 5×5 (cheaper, slightly less smooth) ──
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            vec2 suv = clamp(uv + vec2(float(x), float(y)) * px, px * 0.5, 1.0 - px * 0.5);
+            vec3 c = texture2DLod(colortex0, suv, lod).rgb;
+            c *= smoothstep(0.25, 1.5, luma(c));
+            sum += c;
+        }
+    }
+    return sum / 9.0;
+#else
     for (int x = -2; x <= 2; x++) {
         float wx = 1.0;
         if (x == 0) wx = 6.0; else if (x == 1 || x == -1) wx = 4.0;
@@ -668,6 +723,7 @@ vec3 bloomTile(vec2 uv, float lod, float scale) {
         }
     }
     return sum / 256.0;
+#endif
 }
 
 void main() {
@@ -683,7 +739,8 @@ void main() {
 #endif
 `;
 
-export const PROG_FINAL = `// program/final.glsl — bloom merge, tonemap, BSL-style color grading, vignette, dithering
+export const PROG_FINAL = `${H('program/final.glsl')}
+// Bloom merge, tonemap, BSL-style color grading, vignette, dithering, color temp.
 #include "/lib/uniforms.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
@@ -765,9 +822,11 @@ void main() {
     color *= 1.0 - VIGNETTE_STRENGTH * 0.6 * smoothstep(0.4, 0.95, v);
 #endif
 
+#ifndef NO_COLOR_TEMP
     // color temperature shift (warm = amber, cool = blue)
     color = mix(color, color * vec3(1.12, 1.04, 0.88), sat(COLOR_TEMP));
     color = mix(color, color * vec3(0.88, 0.96, 1.15), sat(-COLOR_TEMP));
+#endif
 
 #ifndef SKIP_DITHERING
     color += (hash12(gl_FragCoord.xy) - 0.5) / 255.0;

@@ -1,5 +1,5 @@
 // ============================================================================
-//  Vivid Lite — Minecraft version / loader compatibility layer (v1.1.0)
+//  Vivid Lite — Minecraft version / loader compatibility layer
 //  Supports Minecraft 1.8 → 26.3 on both Iris and OptiFine.
 // ============================================================================
 
@@ -31,7 +31,7 @@ export const VERSION_TARGETS: Record<VersionTargetId, VersionTarget> = {
     legacyShadow: true,
     legacyBuffers: true,
     simpleMenu: true,
-    note: 'Dùng block ID số (31, 18, 8…), shadow so sánh thủ công, buffer RGB16. Chạy được cả OptiFine HD U cũ.',
+    note: 'Numeric block IDs (31, 18, 8…), manual shadow compare, RGB16 buffer. Runs on old OptiFine HD U too.',
     loaders: 'OptiFine HD U (1.8.9+) · Iris (qua Legacy Iris/1.12 fork)',
   },
   classic: {
@@ -42,7 +42,7 @@ export const VERSION_TARGETS: Record<VersionTargetId, VersionTarget> = {
     legacyShadow: false,
     legacyBuffers: false,
     simpleMenu: false,
-    note: 'Block ID namespaced đầy đủ, buffer HDR, shadow phần cứng. Iris 1.16.5 hoặc OptiFine HD U.',
+    note: 'Full namespaced block IDs, HDR buffer, hardware shadow. Iris 1.16.5 or OptiFine HD U.',
     loaders: 'OptiFine HD U G/H · Iris 1.1.x (1.16.5)',
   },
   modern: {
@@ -53,7 +53,7 @@ export const VERSION_TARGETS: Record<VersionTargetId, VersionTarget> = {
     legacyShadow: false,
     legacyBuffers: false,
     simpleMenu: false,
-    note: 'Thêm block 1.17+ (froglight, sculk, amethyst, candle, copper bulb chưa có).',
+    note: 'Adds 1.17+ blocks (froglight, sculk, amethyst, candle). No copper bulb yet.',
     loaders: 'Iris 1.2–1.7 · OptiFine HD U I/J',
   },
   latest: {
@@ -64,15 +64,15 @@ export const VERSION_TARGETS: Record<VersionTargetId, VersionTarget> = {
     legacyShadow: false,
     legacyBuffers: false,
     simpleMenu: false,
-    note: 'Đầy đủ block mới nhất: pale oak, creaking heart, eyeblossom, wildflowers, copper bulb, vault, trial spawner.',
-    loaders: 'Iris 1.8–1.11+ · OptiFine (khi có bản cho version đó)',
+    note: 'Full latest blocks: pale oak, creaking heart, eyeblossom, wildflowers, copper bulb, vault, trial spawner.',
+    loaders: 'Iris 1.8–1.11+ · OptiFine (once available for that version)',
   },
 };
 
 export const LOADER_META: Record<LoaderId, { label: string; desc: string; emoji: string }> = {
-  both: { label: 'Cả hai (đề xuất)', desc: 'File chạy được trên cả Iris và OptiFine. Chỉ thị riêng của Iris được để lại — OptiFine tự bỏ qua.', emoji: '🔀' },
-  iris: { label: 'Iris / Sodium', desc: 'Bật đầy đủ tính năng riêng của Iris: program.enabled, shadow.enabled → tắt pass hoàn toàn khi không dùng.', emoji: '🌈' },
-  optifine: { label: 'OptiFine', desc: 'Bỏ mọi chỉ thị riêng Iris, dùng cú pháp menu cổ điển. An toàn nhất cho OptiFine đời cũ.', emoji: '🔧' },
+  both: { label: 'Both (recommended)', desc: 'Runs on both Iris and OptiFine. Iris-only directives stay in the file — OptiFine ignores them.', emoji: '🔀' },
+  iris: { label: 'Iris / Sodium', desc: 'Enables Iris-only features: program.enabled and shadow.enabled → passes are fully skipped when unused.', emoji: '🌈' },
+  optifine: { label: 'OptiFine', desc: 'Removes all Iris-only directives and uses the classic menu syntax. Safest for old OptiFine builds.', emoji: '🔧' },
 };
 
 // ---------------------------------------------------------------------------
@@ -120,7 +120,9 @@ const WEAK_117 = ' minecraft:amethyst_cluster minecraft:large_amethyst_bud minec
 const WEAK_121 = ' minecraft:calibrated_sculk_sensor:sculk_sensor_phase=active minecraft:vault:vault_state=active minecraft:trial_spawner:trial_spawner_state=active minecraft:creaking_heart:creaking_heart_state=awake minecraft:heavy_core';
 
 /** Numeric IDs for 1.8 – 1.12.2 (no namespaced IDs in that era). */
-const LEGACY_BLOCKS = `# Vivid Lite — block.properties (Minecraft 1.8 – 1.12.2, numeric IDs)
+const LEGACY_BLOCKS = `# Vivid Lite — block.properties
+# Author: zaminhh | https://github.com/Zaminhh/Vivid-Lite-Shaders
+# Minecraft 1.8 – 1.12.2 (numeric block IDs)
 # 10001 waving plants | 10002 leaves & vines | 10003 water | 10004 lava
 # 10010 strong light  | 10011 weak light     | 10012 nether portal
 
@@ -157,7 +159,9 @@ export function buildBlockProperties(target: VersionTargetId): string {
     weak += WEAK_121;
   }
 
-  return `# Vivid Lite — block.properties (Minecraft ${VERSION_TARGETS[target].label})
+  return `# Vivid Lite — block.properties
+# Author: zaminhh | https://github.com/Zaminhh/Vivid-Lite-Shaders
+# Minecraft ${VERSION_TARGETS[target].label}
 # 10001 waving plants | 10002 leaves & vines | 10003 water | 10004 lava
 # 10010 strong light  | 10011 weak light     | 10012 nether portal
 

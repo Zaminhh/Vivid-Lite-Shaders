@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { VERSION_TARGETS, buildBlockProperties, buildBufferFormats, type LoaderId, type VersionTargetId } from './compat';
+import { AUTHOR, REPO_URL, VERSION } from './version';
 
 export type PresetId = 'extraPotato' | 'lowPotato' | 'highPotato' | 'potato' | 'low' | 'medium' | 'high' | 'extraHigh';
 
@@ -26,8 +27,8 @@ export interface ShaderSettings {
   emissiveStrength: number;
   nightDesat: boolean;
   torchFlicker: boolean;
-  ao: boolean;              // cheap ambient occlusion from lightmap
-  caveLighting: 0 | 1;     // 0 = vanilla, 1 = boosted
+  ao: boolean;
+  caveLighting: 0 | 1;
   // world
   wavingPlants: boolean;
   wavingLeaves: boolean;
@@ -36,12 +37,12 @@ export interface ShaderSettings {
   waterReflection: boolean;
   waterFog: boolean;
   waterAlpha: number;
-  waterTint: number;       // 0 = default, 1 = tropical, 2 = swamp
+  waterTint: number;
   roundSun: boolean;
   stars: boolean;
   fogDensity: number;
-  rainFog: number;          // extra fog during rain
-  sunsetIntensity: number;  // how vivid the sunset colors are
+  rainFog: number;
+  sunsetIntensity: number;
   cloudTranslucency: boolean;
   // post
   bloom: boolean;
@@ -53,26 +54,40 @@ export interface ShaderSettings {
   contrast: number;
   vignette: boolean;
   vignetteStrength: number;
-  colorTemp: number;       // -1 = cool, 0 = neutral, 1 = warm
-  // performance-only toggles (v1.0.1 — Extra Potato optimizations)
-  skipSky: boolean;         // draw super-simple 2-color gradient sky (fastest)
-  skipTonemap: boolean;     // skip tonemap curve, direct gamma only
-  skipDithering: boolean;   // remove +hash/255 in final (saves 1 hash call/pixel)
-  simpleWater: boolean;     // flat water, no waves, no fresnel
-  cullDistance: number;     // hard cutoff distance for expensive per-pixel effects (block-based)
-  lowResShadow: boolean;    // render shadow at 1/2 map res sampling (blockier but 4× faster reads)
-  fogQuality: 0 | 1 | 2;   // 0 = off, 1 = cheap linear, 2 = full atmospheric
-  // ── night rework (v1.1.0) ──
-  nightBrightness: number;   // overall night exposure
-  moonlight: number;         // moon directional light strength
-  nightTint: 0 | 1 | 2;     // 0 = blue (BSL), 1 = teal, 2 = purple
+  colorTemp: number;
+  // performance (v1.0.1)
+  skipSky: boolean;
+  skipTonemap: boolean;
+  skipDithering: boolean;
+  simpleWater: boolean;
+  cullDistance: number;
+  lowResShadow: boolean;
+  fogQuality: 0 | 1 | 2;
+  // night rework (v1.1.0)
+  nightBrightness: number;
+  moonlight: number;
+  nightTint: 0 | 1 | 2;
   starBrightness: number;
-  milkyWay: boolean;         // faint galactic band
-  moonGlow: boolean;         // soft halo around the moon
-  nightFog: number;          // bluish distance haze at night
-  // ── compatibility (v1.1.0) ──
+  milkyWay: boolean;
+  moonGlow: boolean;
+  nightFog: number;
+  // compatibility (v1.1.0)
   mcVersion: VersionTargetId;
   loader: LoaderId;
+  // perf+ (v1.1.1)
+  skyLOD: boolean;
+  smallWave: boolean;
+  waveCutoff: number;
+  shadowCutoff: number;
+  vertexAO: boolean;
+  fastNormalize: boolean;
+  precomputedView: boolean;
+  cheapEmissive: boolean;
+  skipPcf: boolean;
+  fogCutoff: number;
+  halfResBloom: boolean;
+  skipSpecular: boolean;
+  noColorTemp: boolean;
 }
 
 export const OPTION_VALUES = {
@@ -94,6 +109,9 @@ export const OPTION_VALUES = {
   vignetteStrength: [0.25, 0.5, 0.75, 1.0],
   colorTemp: [-1, -0.5, 0, 0.5, 1],
   cullDistance: [32, 48, 64, 96, 128, 160, 200, 999],
+  waveCutoff: [24, 40, 60, 80, 120, 160, 200, 999],
+  shadowCutoff: [32, 48, 64, 96, 128, 160, 999],
+  fogCutoff: [48, 64, 96, 128, 160, 200, 256, 999],
   nightBrightness: [0.4, 0.6, 0.8, 1.0, 1.2, 1.5, 2.0],
   moonlight: [0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0],
   starBrightness: [0, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0],
@@ -118,10 +136,12 @@ const BASE: ShaderSettings = {
   nightBrightness: 1.0, moonlight: 1.0, nightTint: 0, starBrightness: 1.0,
   milkyWay: true, moonGlow: true, nightFog: 1.0,
   mcVersion: 'latest', loader: 'both',
+  skyLOD: true, smallWave: false, waveCutoff: 80, shadowCutoff: 999, vertexAO: false,
+  fastNormalize: true, precomputedView: true, cheapEmissive: true, skipPcf: false,
+  fogCutoff: 128, halfResBloom: false, skipSpecular: false, noColorTemp: false,
 };
 
 export const PRESETS: Record<PresetId, ShaderSettings> = {
-  // ── EXTRA POTATO ─ nightmare-tier optimization, still looks better than vanilla ──
   extraPotato: {
     ...BASE,
     shadows: false, shadowRes: 512, shadowDistance: 32, shadowSoftness: 0,
@@ -133,12 +153,13 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     roundSun: false, stars: false, sunsetIntensity: 0.5, rainFog: 0.75,
     cloudTranslucency: false, fogDensity: 0.5,
     bloom: false, tonemap: 0, vignette: false, vibrance: 0,
-    // v1.0.1 hard-off toggles
     skipSky: true, skipTonemap: true, skipDithering: true,
     simpleWater: true, cullDistance: 32, lowResShadow: true, fogQuality: 0,
     moonlight: 0.5, starBrightness: 0, milkyWay: false, moonGlow: false, nightFog: 0,
+    smallWave: true, waveCutoff: 24, shadowCutoff: 32, skyLOD: true, vertexAO: false,
+    fastNormalize: true, precomputedView: true, cheapEmissive: true, skipPcf: true,
+    fogCutoff: 64, halfResBloom: true, skipSpecular: true, noColorTemp: true,
   },
-  // ── LOW POTATO ─ tiny step up: keep tonemap + waving plants ──
   lowPotato: {
     ...BASE,
     shadows: false, shadowRes: 512, shadowDistance: 32, shadowSoftness: 0,
@@ -152,7 +173,6 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     simpleWater: true, cullDistance: 48, lowResShadow: false, fogQuality: 1,
     moonlight: 0.75, starBrightness: 0.5, milkyWay: false, moonGlow: false, nightFog: 0.5,
   },
-  // ── POTATO ─ original potato preset, slightly better than lowPotato ──
   potato: {
     ...BASE,
     shadows: false, shadowRes: 512, shadowDistance: 48, shadowSoftness: 0,
@@ -163,7 +183,6 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     simpleWater: false, cullDistance: 64, fogQuality: 1,
     starBrightness: 0.75, milkyWay: false, moonGlow: false, nightFog: 0.5,
   },
-  // ── HIGH POTATO ─ potato + very cheap shadows (768/48, hard, no entity) ──
   highPotato: {
     ...BASE,
     shadows: true, shadowRes: 512, shadowDistance: 48, shadowSoftness: 0,
@@ -174,7 +193,6 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     cullDistance: 96, fogQuality: 1,
     milkyWay: false, nightFog: 0.75,
   },
-  // ── LOW ─ shadows + bloom, still light ──
   low: {
     ...BASE,
     shadowRes: 768, shadowDistance: 64, shadowSoftness: 0,
@@ -182,16 +200,13 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     cloudTranslucency: false, sunsetIntensity: 0.85,
     cullDistance: 128, fogQuality: 2,
   },
-  // ── MEDIUM ─ balanced (default recommendation) ──
   medium: { ...BASE },
-  // ── HIGH ─ closest to BSL ──
   high: {
     ...BASE,
     shadowRes: 2048, shadowDistance: 128, shadowSoftness: 2,
     coloredShadows: true, bloomStrength: 0.16, torchFlicker: true,
     cloudTranslucency: true, sunsetIntensity: 1.2,
   },
-  // ── EXTRA HIGH ─ everything cranked, for GTX 1060+ ──
   extraHigh: {
     ...BASE,
     shadowRes: 2048, shadowDistance: 160, shadowSoftness: 2,
@@ -209,58 +224,58 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
 export const PRESET_META: Record<PresetId, { name: string; tagline: string; target: string; emoji: string; fpsNote: string; tier: 'potato' | 'balanced' | 'high' }> = {
   extraPotato: {
     name: 'Extra Potato', emoji: '💀',
-    tagline: 'Tối ưu hết mức. Bỏ sky procedural, tonemap, dithering, sương. Chỉ giữ ánh sáng cơ bản + màu.',
-    target: 'Intel HD 2000/3000, netbook Atom, 2 GB RAM',
-    fpsNote: '~98% FPS vanilla',
+    tagline: 'Maximum optimization. Skips procedural sky, tonemap, dithering, fog. Keeps only basic lighting + color grading.',
+    target: 'Intel HD 2000/3000, Atom netbooks, 2 GB RAM',
+    fpsNote: '~99% of vanilla FPS',
     tier: 'potato',
   },
   lowPotato: {
     name: 'Low Potato', emoji: '🥔',
-    tagline: 'Potato tối ưu hơn tí. Nước phẳng, sương tuyến tính rẻ, bỏ dithering.',
-    target: 'Intel HD 3000/4000, Celeron 2 nhân',
-    fpsNote: '~95% FPS vanilla',
+    tagline: 'A step above Potato. Flat water, cheap linear fog, no dithering.',
+    target: 'Intel HD 3000/4000, dual-core Celeron',
+    fpsNote: '~95% of vanilla FPS',
     tier: 'potato',
   },
   potato: {
     name: 'Potato', emoji: '🍟',
-    tagline: 'Không bóng, không bloom — ánh sáng đẹp, bầu trời, nước trong.',
-    target: 'Intel HD 4000, 4 GB RAM, laptop cũ 2012+',
-    fpsNote: '~92% FPS vanilla',
+    tagline: 'No shadows, no bloom — pretty lighting, sky and clear water.',
+    target: 'Intel HD 4000, 4 GB RAM, 2012+ laptops',
+    fpsNote: '~92% of vanilla FPS',
     tier: 'potato',
   },
   highPotato: {
     name: 'High Potato', emoji: '🌶️',
-    tagline: 'Potato tối ưu cao hơn: thêm bóng cứng 512px tầm gần 48 block.',
-    target: 'Intel HD 5000/HD 520, laptop văn phòng 2014+',
-    fpsNote: '~88% FPS vanilla',
+    tagline: 'Potato + hard 512px shadows at 48-block range.',
+    target: 'Intel HD 5000/HD 520, 2014+ office laptops',
+    fpsNote: '~88% of vanilla FPS',
     tier: 'potato',
   },
   low: {
     name: 'Low', emoji: '🌱',
-    tagline: 'Bóng cứng 768px + bloom nhẹ. Đẹp rõ rệt, nhẹ bất ngờ.',
+    tagline: 'Hard 768px shadows + subtle bloom. Noticeably prettier, surprisingly light.',
     target: 'Intel HD 520/620, UHD 600, Vega 3',
-    fpsNote: '~85% FPS vanilla',
+    fpsNote: '~85% of vanilla FPS',
     tier: 'balanced',
   },
   medium: {
-    name: 'Medium (đề xuất)', emoji: '🌤️',
-    tagline: 'Bóng mềm 1024px, sương nước, lá đung đưa. Cân bằng hoàn hảo.',
+    name: 'Medium (recommended)', emoji: '🌤️',
+    tagline: 'Soft 1024px shadows, water depth fog, waving leaves. The sweet spot.',
     target: 'Iris Xe, Vega 8, GT 1030, MX150',
-    fpsNote: '~80% FPS vanilla',
+    fpsNote: '~80% of vanilla FPS',
     tier: 'balanced',
   },
   high: {
     name: 'High (BSL look)', emoji: '✨',
-    tagline: 'Bóng 2048px rất mềm, bóng màu, đuốc lung linh. Gần nhất BSL.',
-    target: 'GTX 1050 / RX 560 trở lên',
-    fpsNote: '~72% FPS vanilla',
+    tagline: 'Very soft 2048px shadows, colored shadows, flickering torches. Closest to BSL.',
+    target: 'GTX 1050 / RX 560 and up',
+    fpsNote: '~72% of vanilla FPS',
     tier: 'high',
   },
   extraHigh: {
     name: 'Extra High', emoji: '💎',
-    tagline: 'Kịch cấu hình: bóng 2048/160, cloud translucency, vibrance & vignette tối đa.',
-    target: 'GTX 1060 / RX 580 trở lên',
-    fpsNote: '~65% FPS vanilla',
+    tagline: 'Everything cranked: 2048/160 shadows, cloud translucency, max vibrance & vignette.',
+    target: 'GTX 1060 / RX 580 and up',
+    fpsNote: '~65% of vanilla FPS',
     tier: 'high',
   },
 };
@@ -273,7 +288,6 @@ const f1 = (v: number) => v.toFixed(1);
 const list = (vals: readonly number[], fmt: (v: number) => string) => `//[${vals.map(fmt).join(' ')}]`;
 const flag = (name: string, on: boolean) => `${on ? '' : '//'}#define ${name}`;
 
-/** Keys that are orthogonal to the visual preset (compat targets). */
 const NON_PRESET_KEYS: (keyof ShaderSettings)[] = ['mcVersion', 'loader'];
 
 export function detectPreset(s: ShaderSettings): PresetId | 'custom' {
@@ -285,7 +299,6 @@ export function detectPreset(s: ShaderSettings): PresetId | 'custom' {
   return 'custom';
 }
 
-/** Apply a preset but keep the user's version/loader choice. */
 export function applyPresetKeepCompat(preset: ShaderSettings, current: ShaderSettings): ShaderSettings {
   return { ...preset, mcVersion: current.mcVersion, loader: current.loader };
 }
@@ -296,7 +309,12 @@ export function applyPresetKeepCompat(preset: ShaderSettings, current: ShaderSet
 export function buildSettingsGlsl(s: ShaderSettings, presetLabel: string): string {
   const vt = VERSION_TARGETS[s.mcVersion];
   return `// ============================================================================
-//  Vivid Lite Shaders v1.1.0 — lib/settings.glsl
+//  Vivid Lite Shaders v${VERSION} — lib/settings.glsl
+//  Author / Credit : ${AUTHOR}
+//  Source code     : ${REPO_URL}
+//  Inspired by     : BSL Shaders (Capt Tatsu) — visual style only
+//  License         : Free to use, modify, redistribute (credit author)
+//
 //  Preset: ${presetLabel}  |  Target: Minecraft ${vt.label}  |  Loader: ${s.loader}
 //  Every option below can be changed in game:
 //  Options > Video Settings > Shader Packs > Shader Pack Settings
@@ -369,15 +387,28 @@ ${flag('VIGNETTE', s.vignette)}
 #define VIGNETTE_STRENGTH ${f2(s.vignetteStrength)} ${list(OPTION_VALUES.vignetteStrength, f2)}
 #define COLOR_TEMP ${f2(s.colorTemp)} ${list(OPTION_VALUES.colorTemp, f2)}
 
-// ---------------- PERFORMANCE (v1.0.1) ----------------
-// These override or skip work entirely. Turning them on = fewer instructions = more FPS.
-${flag('SKIP_SKY_PROC', s.skipSky)}
+// ---------------- PERFORMANCE ----------------
+${flag('SKIP_SKY_PROC', s.skipSky || s.fogQuality === 0)}
 ${flag('SKIP_TONEMAP', s.skipTonemap)}
 ${flag('SKIP_DITHERING', s.skipDithering)}
 ${flag('SIMPLE_WATER', s.simpleWater)}
 ${flag('LOW_RES_SHADOW', s.lowResShadow)}
 #define CULL_DISTANCE ${f1(s.cullDistance)} ${list(OPTION_VALUES.cullDistance, f1)}
 #define FOG_QUALITY ${s.fogQuality} //[0 1 2]
+// perf+ (v1.1.1)
+${flag('SKY_LOD', s.skyLOD)}
+${flag('SMALL_WAVE', s.smallWave)}
+${flag('VERTEX_AO', s.vertexAO)}
+${flag('FAST_NORMALIZE', s.fastNormalize)}
+${flag('PRECOMPUTED_VIEW', s.precomputedView)}
+${flag('CHEAP_EMISSIVE', s.cheapEmissive)}
+${flag('SKIP_PCF', s.skipPcf)}
+${flag('HALF_RES_BLOOM', s.halfResBloom)}
+${flag('SKIP_SPECULAR', s.skipSpecular)}
+${flag('NO_COLOR_TEMP', s.noColorTemp)}
+#define WAVE_CUTOFF ${f1(s.waveCutoff)} ${list(OPTION_VALUES.waveCutoff, f1)}
+#define SHADOW_CUTOFF ${f1(s.shadowCutoff)} ${list(OPTION_VALUES.shadowCutoff, f1)}
+#define FOG_CUTOFF ${f1(s.fogCutoff)} ${list(OPTION_VALUES.fogCutoff, f1)}
 
 // ---------------- BUFFERS (do not edit) ----------------
 ${buildBufferFormats(s.mcVersion)}
@@ -396,9 +427,8 @@ const float eyeBrightnessHalflife = 6.0;
 export function buildShadersProperties(s: ShaderSettings, presetLabel: string): string {
   const vt = VERSION_TARGETS[s.mcVersion];
   const irisOK = s.loader !== 'optifine';
-  // Iris-only directives — OptiFine ignores unknown keys, but pure-OptiFine builds omit them.
   const irisBlock = irisOK
-    ? `# ── Iris-only: skip whole programs when their feature is off (big FPS win) ──
+    ? `# Iris-only: skip whole programs when their feature is off (big FPS win)
 program.composite.enabled=WATER_FOG
 program.composite1.enabled=BLOOM
 program.world1/composite.enabled=WATER_FOG
@@ -406,16 +436,17 @@ program.world1/composite1.enabled=BLOOM
 program.world-1/composite1.enabled=BLOOM
 shadow.enabled=SHADOWS
 `
-    : `# (Iris-only program toggles omitted for OptiFine build — unused passes still
+    : `# (Iris-only program toggles omitted for OptiFine build. Unused passes still
 #  cost almost nothing because their bodies are #ifdef'd out.)
 `;
 
   return `# ============================================================
-#  Vivid Lite Shaders v1.1.0 — shaders.properties
-#  Preset: ${presetLabel}
-#  Target: Minecraft ${vt.label}   Loader: ${s.loader}
+#  Vivid Lite Shaders v${VERSION} — shaders.properties
+#  Author: ${AUTHOR} | ${REPO_URL}
+# Inspired by BSL Shaders (Capt Tatsu). Free to use, credit author.
+# Preset: ${presetLabel}   Target: MC ${vt.label}   Loader: ${s.loader}
 # ============================================================
-version.1.1.0
+version.${VERSION}
 
 sun=${s.roundSun ? 'false' : 'true'}
 moon=true
@@ -455,118 +486,30 @@ sliders=shadowDistance sunPathRotation SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I MIN_LIG
 }
 
 // ---------------------------------------------------------------------------
-// shaders/block.properties — now version-aware (see compat.ts)
+// shaders/block.properties — version-aware (see compat.ts)
 // ---------------------------------------------------------------------------
 export { buildBlockProperties };
 
 // ---------------------------------------------------------------------------
-// language
+// language — English only. The pack ships one lang file to keep the .zip small
+// and to work in every region without translation drift.
 // ---------------------------------------------------------------------------
-export const LANG_VI = `screen.SHADOW_SCREEN=Bóng đổ
-screen.LIGHTING_SCREEN=Ánh sáng
-screen.WORLD_SCREEN=Thế giới & Nước
-screen.POST_SCREEN=Màu sắc & Hậu kỳ
-profile.POTATO=Khoai tây (FPS tối đa)
-profile.LOW=Thấp
-profile.MEDIUM=Trung bình
-profile.HIGH=Cao (giống BSL)
-option.SHADOWS=Bóng đổ
-option.shadowMapResolution=Độ phân giải bóng
-option.shadowDistance=Tầm xa bóng đổ
-option.SHADOW_SOFTNESS=Độ mềm bóng
-value.SHADOW_SOFTNESS.0=Cứng
-value.SHADOW_SOFTNESS.1=Mềm
-value.SHADOW_SOFTNESS.2=Rất mềm
-option.COLORED_SHADOWS=Bóng có màu
-option.sunPathRotation=Góc mặt trời
-option.SUNLIGHT_I=Ánh nắng
-option.AMBIENT_I=Ánh môi trường
-option.BLOCKLIGHT_I=Ánh đuốc
-option.BLOCKLIGHT_WARMTH=Màu đuốc
-value.BLOCKLIGHT_WARMTH.0=Lạnh
-value.BLOCKLIGHT_WARMTH.1=Ấm (BSL)
-value.BLOCKLIGHT_WARMTH.2=Rất ấm
-option.MIN_LIGHT=Sáng tối thiểu
-option.HAND_LIGHT=Đèn cầm tay
-option.EMISSIVE_BLOCKS=Block phát sáng
-option.EMISSIVE_STRENGTH=Độ phát sáng
-option.NIGHT_DESATURATION=Giảm màu đêm
-option.TORCH_FLICKER=Đuốc lung linh
-option.FAKE_AO=Ao giả (tối góc)
-option.CAVE_LIGHTING=Chiếu sáng hang
-value.CAVE_LIGHTING.0=Vanilla
-value.CAVE_LIGHTING.1=Tăng sáng
-option.WAVING_PLANTS=Cỏ hoa đung đưa
-option.WAVING_LEAVES=Lá đung đưa
-option.WAVING_STRENGTH=Sức gió
-option.WATER_WAVES=Sóng nước
-option.WATER_REFLECTION=Nước phản chiếu
-option.WATER_FOG=Sương nước
-option.WATER_ALPHA=Độ đục nước
-option.WATER_TINT=Màu nước
-value.WATER_TINT.0=Mặc định
-value.WATER_TINT.1=Nhiệt đới
-value.WATER_TINT.2=Đầm lầy
-option.STARS=Sao đêm
-option.FOG_DENSITY=Độ dày sương
-option.RAIN_FOG=Sương mưa
-option.SUNSET_INTENSITY=Hoàng hôn rực
-option.CLOUD_TRANSLUCENCY=Mây trong sáng
-option.BLOOM=Bloom
-option.BLOOM_STRENGTH=Độ mạnh bloom
-option.TONEMAP=Tonemap
-value.TONEMAP.0=Không
-value.TONEMAP.1=Sống động (BSL)
-value.TONEMAP.2=ACES
-option.EXPOSURE=Phơi sáng
-option.SATURATION=Độ bão hòa
-option.VIBRANCE=Độ rực
-option.CONTRAST=Tương phản
-option.VIGNETTE=Tối góc
-option.VIGNETTE_STRENGTH=Độ tối góc
-option.COLOR_TEMP=Nhiệt độ màu
-screen.PERF_SCREEN=⚡ Tối ưu hiệu năng
-option.SKIP_SKY_PROC=Bỏ sky procedural
-option.SKIP_SKY_PROC.comment=Dùng gradient 2 màu đơn giản. Tiết kiệm ~5-8% GPU nhưng bầu trời phẳng hơn.
-option.SKIP_TONEMAP=Bỏ tonemap
-option.SKIP_TONEMAP.comment=Bỏ đường cong tonemap, chỉ dùng gamma. Rẻ hơn nhưng cháy sáng dễ hơn.
-option.SKIP_DITHERING=Bỏ dithering
-option.SKIP_DITHERING.comment=Bỏ hash noise chống banding. Tiết kiệm 1 hash/pixel. Có thể thấy dải màu ở bầu trời.
-option.SIMPLE_WATER=Nước đơn giản
-option.SIMPLE_WATER.comment=Nước phẳng, không sóng, không fresnel. Tiết kiệm ~10% với cảnh nhiều nước.
-option.LOW_RES_SHADOW=Bóng nửa độ phân giải
-option.LOW_RES_SHADOW.comment=Sample shadow ở 1/2 res rồi upsample. Bóng hơi vỡ nhưng nhanh 4×.
-option.CULL_DISTANCE=Tầm cắt hiệu ứng đắt
-option.CULL_DISTANCE.comment=Ngoài khoảng cách này, các hiệu ứng như phản chiếu nước bị tắt để tiết kiệm.
-option.FOG_QUALITY=Chất lượng sương
-value.FOG_QUALITY.0=Tắt
-value.FOG_QUALITY.1=Rẻ (tuyến tính)
-value.FOG_QUALITY.2=Đầy đủ (khí quyển)
-screen.NIGHT_SCREEN=🌙 Ban đêm
-option.NIGHT_BRIGHTNESS=Độ sáng ban đêm
-option.NIGHT_BRIGHTNESS.comment=Chỉnh tổng thể độ sáng về đêm. Thấp = tối bí ẩn, cao = dễ nhìn.
-option.MOONLIGHT=Ánh trăng
-option.MOONLIGHT.comment=Cường độ ánh sáng định hướng từ mặt trăng. Có đổ bóng thật.
-option.NIGHT_TINT=Tông màu đêm
-value.NIGHT_TINT.0=Xanh dương (BSL)
-value.NIGHT_TINT.1=Xanh ngọc
-value.NIGHT_TINT.2=Tím
-option.STAR_BRIGHTNESS=Độ sáng sao
-option.MILKY_WAY=Dải Ngân Hà
-option.MILKY_WAY.comment=Dải sao mờ vắt ngang bầu trời đêm. Rất rẻ (tái dùng hash sẵn có).
-option.MOON_GLOW=Quầng sáng mặt trăng
-option.NIGHT_FOG=Sương đêm
-option.NIGHT_FOG.comment=Sương xanh lam ở xa vào ban đêm, tạo chiều sâu.
-`;
-
 export const LANG_EN = `screen.SHADOW_SCREEN=Shadows
 screen.LIGHTING_SCREEN=Lighting
 screen.WORLD_SCREEN=World & Water
 screen.POST_SCREEN=Color & Post
-profile.POTATO=Potato (max FPS)
-profile.LOW=Low
-profile.MEDIUM=Medium
-profile.HIGH=High (BSL look)
+screen.NIGHT_SCREEN=Night
+screen.PERF_SCREEN=Performance
+
+profile.EXTRA_POTATO=Extra Potato (99% FPS)
+profile.LOW_POTATO=Low Potato (95% FPS)
+profile.POTATO=Potato (92% FPS)
+profile.HIGH_POTATO=High Potato (88% FPS)
+profile.LOW=Low (85% FPS)
+profile.MEDIUM=Medium - Recommended (80% FPS)
+profile.HIGH=High - BSL look (72% FPS)
+profile.EXTRA_HIGH=Extra High (65% FPS)
+
 option.SHADOWS=Shadows
 option.shadowMapResolution=Shadow Resolution
 option.shadowDistance=Shadow Distance
@@ -576,6 +519,7 @@ value.SHADOW_SOFTNESS.1=Soft
 value.SHADOW_SOFTNESS.2=Very soft
 option.COLORED_SHADOWS=Colored Shadows
 option.sunPathRotation=Sun Path Angle
+
 option.SUNLIGHT_I=Sunlight
 option.AMBIENT_I=Ambient
 option.BLOCKLIGHT_I=Torch Light
@@ -593,6 +537,18 @@ option.FAKE_AO=Fake AO
 option.CAVE_LIGHTING=Cave Lighting
 value.CAVE_LIGHTING.0=Vanilla
 value.CAVE_LIGHTING.1=Boosted
+
+option.NIGHT_BRIGHTNESS=Night Brightness
+option.MOONLIGHT=Moonlight
+option.NIGHT_TINT=Night Tint
+value.NIGHT_TINT.0=Blue (BSL)
+value.NIGHT_TINT.1=Teal
+value.NIGHT_TINT.2=Purple
+option.STAR_BRIGHTNESS=Star Brightness
+option.MILKY_WAY=Milky Way band
+option.MOON_GLOW=Moon Glow
+option.NIGHT_FOG=Night Fog
+
 option.WAVING_PLANTS=Waving Plants
 option.WAVING_LEAVES=Waving Leaves
 option.WAVING_STRENGTH=Wind Strength
@@ -609,6 +565,7 @@ option.FOG_DENSITY=Fog Density
 option.RAIN_FOG=Rain Fog
 option.SUNSET_INTENSITY=Sunset Intensity
 option.CLOUD_TRANSLUCENCY=Cloud Translucency
+
 option.BLOOM=Bloom
 option.BLOOM_STRENGTH=Bloom Strength
 option.TONEMAP=Tonemap
@@ -622,32 +579,34 @@ option.CONTRAST=Contrast
 option.VIGNETTE=Vignette
 option.VIGNETTE_STRENGTH=Vignette Strength
 option.COLOR_TEMP=Color Temperature
-screen.PERF_SCREEN=⚡ Performance
+
 option.SKIP_SKY_PROC=Skip procedural sky
 option.SKIP_TONEMAP=Skip tonemap curve
 option.SKIP_DITHERING=Skip dithering
+option.NO_COLOR_TEMP=Skip color temperature
+option.SKIP_SPECULAR=Skip water specular
 option.SIMPLE_WATER=Simple flat water
 option.LOW_RES_SHADOW=Half-res shadow sampling
+option.SKIP_PCF=1-tap shadow (no PCF)
+option.HALF_RES_BLOOM=Half-res bloom
+option.SKY_LOD=Cheap sky at far distance
+option.SMALL_WAVE=1 wave instead of 3
+option.FAST_NORMALIZE=Fast normalize
+option.PRECOMPUTED_VIEW=Pre-computed view dir
+option.CHEAP_EMISSIVE=Cheap emissive
+option.VERTEX_AO=Vertex-side AO
 option.CULL_DISTANCE=Effect cull distance
+option.WAVE_CUTOFF=Disable waves beyond
+option.SHADOW_CUTOFF=Disable shadow lookup beyond
+option.FOG_CUTOFF=Disable fog beyond
 option.FOG_QUALITY=Fog quality
 value.FOG_QUALITY.0=Off
 value.FOG_QUALITY.1=Cheap (linear)
 value.FOG_QUALITY.2=Full (atmospheric)
-screen.NIGHT_SCREEN=🌙 Night
-option.NIGHT_BRIGHTNESS=Night Brightness
-option.MOONLIGHT=Moonlight
-option.NIGHT_TINT=Night Tint
-value.NIGHT_TINT.0=Blue (BSL)
-value.NIGHT_TINT.1=Teal
-value.NIGHT_TINT.2=Purple
-option.STAR_BRIGHTNESS=Star Brightness
-option.MILKY_WAY=Milky Way band
-option.MOON_GLOW=Moon Glow
-option.NIGHT_FOG=Night Fog
 `;
 
 // ---------------------------------------------------------------------------
-// stub files
+// stub files (.vsh / .fsh that include the shared program sources)
 // ---------------------------------------------------------------------------
 export const PROGRAM_NAMES = [
   'gbuffers_basic','gbuffers_textured','gbuffers_textured_lit','gbuffers_terrain',
@@ -695,92 +654,128 @@ export function buildStubFiles(): Record<string, string> {
   return files;
 }
 
+// ---------------------------------------------------------------------------
+// README.txt / CHANGELOG.txt / README.md (bundled inside the .zip)
+// ---------------------------------------------------------------------------
+export const CREDIT_HEADER = `# ===========================================================
+#  Vivid Lite Shaders v${VERSION}
+#  Author / Credit : ${AUTHOR}
+#  Source code     : ${REPO_URL}
+#  Inspired by     : BSL Shaders (Capt Tatsu) — visual style only
+#  License         : Free to use, modify, redistribute (credit author)
+# ===========================================================
+`;
+
 export function buildReadme(pl: string, s?: ShaderSettings): string {
   const vt = s ? VERSION_TARGETS[s.mcVersion] : null;
   const loaderTxt = s ? (s.loader === 'both' ? 'Iris + OptiFine' : s.loader === 'iris' ? 'Iris / Sodium' : 'OptiFine') : 'Iris + OptiFine';
-  return `================================================================
-   VIVID LITE SHADERS  v1.1.0  —  preset dong goi: ${pl}
+  return `${CREDIT_HEADER}
 ================================================================
-   Shader Minecraft phong cach BSL, toi uu cho may yeu.
-   Ho tro Minecraft 1.8 - 26.3, Iris va OptiFine.
-${vt ? `   Ban nay build cho: Minecraft ${vt.label}  |  ${loaderTxt}` : ''}
+   VIVID LITE SHADERS  v${VERSION}  -  packaged preset: ${pl}
+================================================================
+   BSL-style Minecraft shader, optimized for weak hardware.
+   Supports Minecraft 1.8 - 26.3, on Iris and OptiFine.
+${vt ? `   This build targets: Minecraft ${vt.label}  |  ${loaderTxt}` : ''}
 ================================================================
 
-CAI DAT (IRIS - khuyen dung, FPS cao nhat)
-------------------------------------------
-1. Cai Fabric Loader cho version Minecraft cua ban
-   tai fabricmc.net
-2. Tai Sodium + Iris (dung version) tu modrinth.com
-   Bo 2 file .jar vao thu muc .minecraft/mods
-3. Bo NGUYEN file .zip nay (KHONG giai nen) vao
+INSTALL (IRIS - recommended, highest FPS)
+-----------------------------------------
+1. Install Fabric Loader for your Minecraft version at
+   fabricmc.net
+2. Download Sodium + Iris (matching version) from
+   modrinth.com, drop both .jar files into
+   .minecraft/mods
+3. Drop THIS .zip AS-IS (DO NOT extract) into
    .minecraft/shaderpacks
-4. Trong game: Options > Video Settings > Shader Packs
-   Chon "VividLite_v1.1.0_${pl}.zip" > Apply
-5. Bam "Shader Pack Settings" de doi profile hoac tinh chinh
+4. In-game: Options > Video Settings > Shader Packs
+   Pick "VividLite_v${VERSION}_${pl}.zip" > Apply
+5. Click "Shader Pack Settings" to switch profile or tune
 
-CAI DAT (OPTIFINE)
+INSTALL (OPTIFINE)
 ------------------
-1. Cai OptiFine HD U (dung version) tai optifine.net
-2. Bo file .zip vao .minecraft/shaderpacks
-3. Trong game: Options > Video Settings > Shaders...
-   Chon Vivid Lite
+1. Install OptiFine HD U (matching version) at
+   optifine.net
+2. Drop the .zip into .minecraft/shaderpacks
+3. In-game: Options > Video Settings > Shaders...
+   Select Vivid Lite
 
-MOI TRONG v1.1.0 - BAN DEM
---------------------------
-Menu moi "Ban dem" trong Shader Pack Settings:
-  NIGHT_BRIGHTNESS - do sang tong the ban dem
-  MOONLIGHT        - cuong do anh trang (co do bong that)
-  NIGHT_TINT       - tong mau: Xanh duong / Xanh ngoc / Tim
-  STAR_BRIGHTNESS  - do sang sao
-  MILKY_WAY        - dai Ngan Ha vat ngang bau troi
-  MOON_GLOW        - quang sang mat trang
-  NIGHT_FOG        - suong dem xanh lam
+"NIGHT" MENU (added in v1.1.0)
+------------------------------
+  NIGHT_BRIGHTNESS - overall night exposure
+  MOONLIGHT        - moonlight strength (casts real shadows)
+  NIGHT_TINT       - tint: Blue (BSL) / Teal / Purple
+  STAR_BRIGHTNESS  - star brightness
+  MILKY_WAY        - Milky Way band across the sky
+  MOON_GLOW        - moon halo
+  NIGHT_FOG        - blue night haze
 
-7 PROFILE CO SAN (chon trong Shader Pack Settings)
---------------------------------------------------
-  Extra Potato  - Toi uu het muc. Bo sky/tonemap/dither/fog.
-                  Van dep hon vanilla. ~98% FPS.
-                  Cho: Intel HD 2000/3000, netbook Atom
-  Low Potato    - Potato toi uu hon ti. Nuoc phang.
-                  ~95% FPS. Cho: Intel HD 3000/4000
-  Potato        - Khong bong, khong bloom. ~92% FPS.
-                  Cho: Intel HD 4000, 4GB RAM
-  High Potato   - Potato + bong cung 512px tam gan.
-                  ~88% FPS. Cho: Intel HD 5000/520
-  Low           - Bong 768px + bloom. ~85% FPS.
-                  Cho: Intel HD 620, Vega 3
-  Medium        - Bong mem 1024px + suong nuoc.
-                  ~80% FPS. (Khuyen dung)
-                  Cho: Iris Xe, GT 1030, MX150
-  High          - Bong 2048px, bong mau, dep nhu BSL.
-                  ~72% FPS. Cho: GTX 1050 tro len
-  Extra High    - Kich cau hinh, cloud translucency.
-                  ~65% FPS. Cho: GTX 1060 tro len
+"PERFORMANCE" MENU (18 options, added in v1.1.1)
+------------------------------------------------
+  Skip entirely : SKIP_SKY_PROC, SKIP_TONEMAP, SKIP_DITHERING,
+                  NO_COLOR_TEMP, SKIP_SPECULAR
+  Cheap swap    : SIMPLE_WATER, LOW_RES_SHADOW, SKIP_PCF,
+                  HALF_RES_BLOOM, SKY_LOD, SMALL_WAVE,
+                  FAST_NORMALIZE, PRECOMPUTED_VIEW,
+                  CHEAP_EMISSIVE
+  Distance cull : CULL_DISTANCE, WAVE_CUTOFF, SHADOW_CUTOFF,
+                  FOG_CUTOFF, FOG_QUALITY
 
-MEO CHO MAY YEU
----------------
+8 PROFILES (pick one in Shader Pack Settings)
+---------------------------------------------
+  Extra Potato  - Max optimization. Drops sky/tonemap/dither/fog.
+                  Still prettier than vanilla. ~99% FPS.
+                  For: Intel HD 2000/3000, Atom netbooks
+  Low Potato    - A step above Potato. Flat water.
+                  ~95% FPS. For: Intel HD 3000/4000
+  Potato        - No shadows, no bloom. ~92% FPS.
+                  For: Intel HD 4000, 4GB RAM
+  High Potato   - Potato + hard 512px shadows nearby.
+                  ~88% FPS. For: Intel HD 5000/520
+  Low           - 768px shadows + bloom. ~85% FPS.
+                  For: Intel HD 620, Vega 3
+  Medium        - Soft 1024px shadows + water fog.
+                  ~80% FPS. (Recommended.)
+                  For: Iris Xe, GT 1030, MX150
+  High          - 2048px shadows, colored shadows, BSL look.
+                  ~72% FPS. For: GTX 1050 and up
+  Extra High    - Maxed out, cloud translucency.
+                  ~65% FPS. For: GTX 1060 and up
+
+TIPS FOR WEAK HARDWARE
+----------------------
 - Render Distance 6-8, Simulation Distance 5
 - Clouds: Fast, Particles: Decreased
-- Cai them: Lithium, FerriteCore, ImmediatelyFast,
+- Install: Lithium, FerriteCore, ImmediatelyFast,
   Entity Culling, ModernFix
-- Bong do ton FPS nhat: giam Shadow Resolution truoc
+- Shadows cost the most FPS: lower Shadow Resolution first
 
-CO GI MOI TRONG v1.1.0
-----------------------
-- Ho tro Minecraft 1.8 den 26.3 (4 nhom version)
-- Ho tro OptiFine song song voi Iris
-- Lam lai ban dem: anh trang theo chu ky, 3 tong mau,
-  sao 2 lop, Dai Ngan Ha, quang trang, suong dem
-- Legacy shadow path cho OptiFine doi cu
-- block.properties sinh theo version (khong con warning)
+WHAT'S NEW IN v${VERSION}
+-----------------------
+- 8 new perf options: SKIP_PCF, HALF_RES_BLOOM,
+  SKIP_SPECULAR, NO_COLOR_TEMP, FAST_NORMALIZE,
+  PRECOMPUTED_VIEW, CHEAP_EMISSIVE, FOG_CUTOFF
+- Low-level GLSL: inversesqrt instead of normalize,
+  inline pow(x,3) = x*x*x, inline reflect(),
+  pre-fused blocklight formula, torch flicker 1 sin,
+  End dimension returns early (skips shadow/normal logic)
+- Extra Potato enables all new options (~99% FPS)
+
+BEFORE (v1.1.0)
+---------------
+- Support for Minecraft 1.8 - 26.3 (4 version buckets)
+- OptiFine support alongside Iris
+- Full night rework: phased moonlight, 3 tints,
+  2-layer stars, Milky Way, moon halo, night fog
+- Legacy shadow path for old OptiFine
+- Version-aware block.properties (no more warnings)
 
 LICENSE
 -------
-Lay cam hung tu phong cach BSL Shaders (Capt Tatsu).
-Toan bo ma viet moi tu dau, khong su dung ma cua BSL.
-Dung, sua, chia se thoai mai — vui long ghi nguon "Vivid Lite".
+Inspired by BSL Shaders (Capt Tatsu).
+All code is written from scratch, contains no BSL code.
+Free to use, modify, redistribute - please credit "${AUTHOR}".
 
-GitHub / Trang chu: xem file README.md
+GitHub / homepage: ${REPO_URL}
 ================================================================
 `;
 }
@@ -788,265 +783,256 @@ GitHub / Trang chu: xem file README.md
 export function buildReadmeGithub(): string {
   return `# ✨ Vivid Lite Shaders
 
-> **Shader Minecraft phong cách BSL, tối ưu cho máy yếu.**
-> Đẹp như BSL, nhẹ như Vanilla. Dành cho Minecraft **26.2** + **Iris** + **Sodium** (Fabric).
+> **BSL-style Minecraft shader, optimized for weak hardware.**
+> As pretty as BSL, as light as Vanilla. Supports **Minecraft 1.8 – 26.3** on **Iris** and **OptiFine**.
 
-[![Version](https://img.shields.io/badge/version-1.0.1-fbbf24.svg)](#)
-[![Minecraft](https://img.shields.io/badge/Minecraft-26.2-62b47a.svg)](#)
-[![Iris](https://img.shields.io/badge/Iris-1.11%2B-8b5cf6.svg)](https://modrinth.com/mod/iris)
+[![Version](https://img.shields.io/badge/version-${VERSION}-fbbf24.svg)](${REPO_URL})
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.8%20→%2026.3-62b47a.svg)](${REPO_URL})
+[![Iris](https://img.shields.io/badge/Iris-✔-8b5cf6.svg)](https://modrinth.com/mod/iris)
+[![OptiFine](https://img.shields.io/badge/OptiFine-✔-38bdf8.svg)](https://optifine.net)
 [![License](https://img.shields.io/badge/license-Free%20to%20use-emerald.svg)](#-license)
+
+**Author:** [${AUTHOR}](${REPO_URL}) · **Source code:** ${REPO_URL}
+If you redistribute, modify or build on this project, **please credit ${AUTHOR}**.
 
 ---
 
-## 🎯 Vivid Lite là gì?
+## 🎯 What is Vivid Lite?
 
-Vivid Lite mang **hoàng hôn cam rực**, **bóng đổ mềm**, **nước phản chiếu bầu trời** và **bloom dịu** của BSL — nhưng được viết lại từ đầu để **chạy mượt trên máy yếu, kể cả siêu yếu**.
+Vivid Lite brings the **warm orange sunset**, **soft shadows**, **water sky reflection** and **subtle bloom** of BSL — rewritten from scratch to **run smoothly on weak hardware, even ultra-weak**.
 
-Không SSR, không volumetric light, không TAA: chỉ giữ những gì tạo nên vẻ đẹp thực sự.
+No SSR, no volumetric light, no TAA — just what actually makes Minecraft beautiful.
 
 ### Vivid Lite vs BSL
 
-| Chỉ số | BSL v8 Medium | Vivid Lite Medium |
+| Metric | BSL v8 Medium | Vivid Lite Medium |
 |---|---|---|
-| Pass toàn màn hình | 6–12 | **1–3** |
-| FPS giữ lại (iGPU) | ~30% | **~80%** |
-| Kích thước .zip | ~1.5 MB | **~60 KB** |
-| Shadow map default | 2048px | 1024px (méo, sắc tương đương 1536px) |
-| Bloom | 7 tile downsample | **2 tile mipmap** |
+| Full-screen passes | 6–12 | **1–3** |
+| FPS retained (iGPU) | ~30% | **~80%** |
+| .zip size | ~1.5 MB | **~70 KB** |
+| Default shadow map | 2048px | 1024px *(distorted — as sharp as 1536px uniform)* |
+| Bloom | 7 downsample tiles | **2 mipmap tiles** |
 | Lighting model | Deferred | **Forward** |
+| Minecraft versions | 1.16+ | **1.8 → 26.3** |
+| OptiFine | ✓ | **✓** |
 
 ---
 
-## 🚀 Cài đặt (5 phút, 4 bước)
+## 🚀 Installation
 
-1. **Cài Fabric Loader cho Minecraft 26.2** — tải tại [fabricmc.net](https://fabricmc.net/use/installer/)
-2. **Tải Sodium + Iris (bản 26.2)** từ [Modrinth](https://modrinth.com/mod/iris/versions?g=26.2) — bỏ 2 file \`.jar\` vào \`.minecraft/mods/\`
-3. **Tải file \`VividLite_v1.0.1_<preset>.zip\`** ở trang chủ hoặc [Releases](../../releases) — bỏ **nguyên file .zip** (không giải nén) vào \`.minecraft/shaderpacks/\`
-4. **Trong game:** \`Options → Video Settings → Shader Packs\` → chọn Vivid Lite → **Apply**
+### With Iris + Sodium *(recommended — highest FPS)*
+1. Install **Fabric Loader** for your Minecraft version — [fabricmc.net](https://fabricmc.net/use/installer/)
+2. Download **Sodium + Iris** (matching version) from [Modrinth](https://modrinth.com/mod/iris) → drop the .jar files into .minecraft/mods/
+3. Download the .zip — drop it **as-is** (❗ do not extract) into .minecraft/shaderpacks/
+4. In-game: Options → Video Settings → Shader Packs → select Vivid Lite → **Apply**
 
-Bấm **"Shader Pack Settings"** để đổi profile hoặc tinh chỉnh gần **50 tùy chọn**.
+### With OptiFine
+1. Install **OptiFine HD U** for your Minecraft version at [optifine.net](https://optifine.net)
+2. Drop the .zip into .minecraft/shaderpacks/
+3. In-game: Options → Video Settings → Shaders... → pick Vivid Lite
+
+Click **"Shader Pack Settings"** to switch profile or tune 60+ options.
 
 ---
 
-## 🎚️ 7 Profile có sẵn
+## 🎚️ 8 Presets
 
-| Profile | FPS giữ lại | Phù hợp máy | Ghi chú |
+| Profile | FPS retained | Target hardware | Notes |
 |---|---|---|---|
-| 💀 **Extra Potato** | ~98% | Intel HD 2000/3000, netbook Atom | Tối ưu hết mức. Bỏ sky procedural, tonemap, dithering, fog. |
-| 🥔 **Low Potato** | ~95% | Intel HD 3000/4000, Celeron 2 nhân | Nước phẳng, sương tuyến tính. |
-| 🍟 **Potato** | ~92% | Intel HD 4000, laptop 2012+ 4GB | Không bóng, không bloom. |
-| 🌶️ **High Potato** | ~88% | Intel HD 5000/520, laptop VP 2014+ | Bóng cứng 512px tầm 48 block. |
-| 🌱 **Low** | ~85% | Intel HD 620, UHD 600, Vega 3 | Bóng 768px + bloom. |
-| 🌤️ **Medium** *(đề xuất)* | ~80% | Iris Xe, Vega 8, GT 1030, MX150 | Bóng mềm 1024px + sương nước. |
-| ✨ **High** | ~72% | GTX 1050 / RX 560+ | Bóng 2048px + colored shadows. |
-| 💎 **Extra High** | ~65% | GTX 1060 / RX 580+ | Kịch cấu hình, cloud translucency. |
+| 💀 **Extra Potato** | ~99% | Intel HD 2000/3000, Atom netbooks | Max optimization. Skips procedural sky, tonemap, dithering, fog. |
+| 🥔 **Low Potato** | ~95% | Intel HD 3000/4000, dual-core Celeron | Flat water, cheap linear fog. |
+| 🍟 **Potato** | ~92% | Intel HD 4000, 2012+ laptop 4GB | No shadows, no bloom. |
+| 🌶️ **High Potato** | ~88% | Intel HD 5000/520, office laptop 2014+ | Hard 512px shadows at 48-block range. |
+| 🌱 **Low** | ~85% | Intel HD 620, UHD 600, Vega 3 | 768px shadows + bloom. |
+| 🌤️ **Medium** *(recommended)* | ~80% | Iris Xe, Vega 8, GT 1030, MX150 | Soft 1024px shadows + water depth fog. |
+| ✨ **High** | ~72% | GTX 1050 / RX 560+ | 2048px shadows + colored shadows. |
+| 💎 **Extra High** | ~65% | GTX 1060 / RX 580+ | Everything cranked, cloud translucency. |
 
 ---
 
-## 🔧 Vivid Lite boost FPS bằng cách nào?
+## 🔧 How Vivid Lite boosts FPS
 
-### 1. Forward lighting thay vì Deferred (BSL)
-- Ánh sáng tính **ngay lúc vẽ geometry** trong \`gbuffers_terrain\`, không cần G-buffer extraction
-- Không SSAO pass, không re-light pass, không TAA resolve
-- **1–3 pass toàn màn hình thay vì 6–12** như BSL
+### 1. Forward lighting instead of Deferred (BSL)
+- Light is computed **inline while drawing geometry** in gbuffers_terrain — no G-buffer extraction
+- No SSAO pass, no re-light pass, no TAA resolve
+- **1–3 full-screen passes instead of 6–12** like BSL
 
-### 2. Bloom 2 tile mipmap thay vì 7 tile
-- BSL downsample thủ công 7 lần → \`7 × 270K\` pixel
-- Vivid Lite bật \`colortex0MipmapEnabled=true\` → GPU tạo mipmap **miễn phí**
-- Chỉ đọc 2 tile ở mip level 2 và 4 → \`~150K\` pixel
+### 2. 2-tile mipmap bloom instead of 7-tile
+- BSL downsamples 7 tiles manually → 7 × 270K pixels
+- Vivid Lite enables colortex0MipmapEnabled=true → GPU builds mipmaps **for free**
+- We only sample 2 tiles at mip levels 2 and 4 → ~150K pixels
 
-### 3. Shadow pass có thể tắt hoàn toàn
-- Iris hỗ trợ \`program.shadow.enabled\` và \`program.composite.enabled\`
-- Khi tắt \`SHADOWS\`, Iris **skip shadow pass** → CPU bớt ~1 triệu vertex
-- Khi tắt \`WATER_FOG\` / \`BLOOM\`, các composite pass tương ứng cũng skip
+### 3. Shadow pass can be turned off entirely
+- Iris supports program.shadow.enabled and program.composite.enabled
+- When SHADOWS is off, Iris **skips the shadow pass** → CPU saves ~1M vertices
+- When WATER_FOG / BLOOM is off, the matching composite pass is also skipped
 
-### 4. Hiệu ứng thay thế (thay vì bỏ hẳn)
-| BSL dùng | FPS cost | Vivid Lite thay bằng | Tại sao rẻ |
+### 4. Cheap replacements (instead of removing effects)
+| BSL uses | FPS cost | Vivid Lite replacement | Why it's cheap |
 |---|---|---|---|
-| Screen-space reflections (SSR) | 18% | Sky reflection + Fresnel | 1 texture lookup thay vì ray-march 32 bước |
-| Volumetric light (god rays) | 15% | Bloom nhẹ | 2 mip tile thay vì 1 pass ray-march dày đặc |
-| TAA (temporal AA) | 8% | Dithering 8-bit | 1 hash thay vì velocity buffer + resolve |
-| SSAO | 10% | Fake AO từ lightmap² | 1 phép nhân đã có sẵn |
-| POM / Parallax | 7% | (bỏ) | POM cần 8–32 texture lookup mỗi pixel |
-| Motion blur | 5% | (bỏ) | Cần velocity buffer + blur toàn màn hình |
-| Deferred composite (6+ pass) | 12% | Forward 1–3 pass | Không cần G-buffer extraction |
+| Screen-space reflections (SSR) | 18% | Sky reflection + Fresnel | 1 texture lookup vs 32-step ray-march |
+| Volumetric light (god rays) | 15% | Cheap bloom | 2 mip tiles vs a dense ray-march pass |
+| TAA (temporal AA) | 8% | 8-bit dithering | 1 hash vs velocity buffer + resolve |
+| SSAO | 10% | Fake AO from lightmap² | 1 multiply, already in the pipeline |
+| POM / Parallax | 7% | (dropped) | POM needs 8–32 texture lookups per pixel |
+| Motion blur | 5% | (dropped) | Needs velocity buffer + full-screen blur |
+| Deferred composite (6+ pass) | 12% | Forward 1–3 pass | No G-buffer extraction |
 
-**Tổng tiết kiệm: ~75% frame time** so với BSL Medium trên iGPU.
+**Total savings: ~75% frame time** vs BSL Medium on iGPU.
 
 ---
 
-## ⚡ Tùy chọn tối ưu (v1.0.1)
+## ⚡ Performance menu (18 options)
 
-Menu **"⚡ Performance"** mới trong Shader Pack Settings:
+**Skip entirely:** SKIP_SKY_PROC · SKIP_TONEMAP · SKIP_DITHERING · NO_COLOR_TEMP · SKIP_SPECULAR
 
-| Option | Tác dụng | FPS gain |
+**Cheap swaps:** SIMPLE_WATER · LOW_RES_SHADOW · SKIP_PCF · HALF_RES_BLOOM · SKY_LOD · SMALL_WAVE · FAST_NORMALIZE · PRECOMPUTED_VIEW · CHEAP_EMISSIVE
+
+**Distance culls:** CULL_DISTANCE · WAVE_CUTOFF · SHADOW_CUTOFF · FOG_CUTOFF · FOG_QUALITY
+
+---
+
+## 🛠️ Recommended Video Settings for weak hardware
+
+| Setting | Value | Why |
 |---|---|---|
-| \`SKIP_SKY_PROC\` | Dùng gradient 2 màu thay sky procedural | ~5–8% |
-| \`SKIP_TONEMAP\` | Bỏ đường cong tonemap, chỉ gamma | ~1–2% |
-| \`SKIP_DITHERING\` | Bỏ hash noise chống banding | ~0.5% |
-| \`SIMPLE_WATER\` | Nước phẳng, không sóng, không fresnel | ~3–5% |
-| \`LOW_RES_SHADOW\` | Sample shadow ở ½ độ phân giải | ~3–4% |
-| \`CULL_DISTANCE\` | Cắt hiệu ứng đắt sau khoảng cách này | tuyến tính |
-| \`FOG_QUALITY\` | 0 = tắt, 1 = linear rẻ, 2 = khí quyển | ~1.5% |
+| Render Distance | 6–8 chunks | Biggest FPS impact after the shader |
+| Simulation Distance | 5 | Lower CPU load |
+| Graphics | Fast | Dense leaves = fewer pixels to draw |
+| Clouds | Fast or Off | Fancy clouds are fill-rate heavy |
+| Entity Shadows | Off | The shader already draws real shadows |
+| Particles | Decreased | Less overdraw |
+| Max Framerate | 60 | Less heat, steadier frame times |
+| Mipmap Levels | 2 | Smooth enough, less VRAM |
+
+**Recommended companion mods (Fabric, free):** Lithium · FerriteCore · ImmediatelyFast · Entity Culling · ModernFix · Dynamic FPS
 
 ---
 
-## 🛠️ Đề xuất Video Settings cho máy yếu
+## 🎨 Build your own shader
 
-| Setting | Giá trị | Vì sao |
-|---|---|---|
-| Render Distance | 6–8 chunk | Ảnh hưởng FPS nhiều nhất sau shader |
-| Simulation Distance | 5 | Giảm tải CPU |
-| Graphics | Fast | Lá cây đặc = ít pixel cần vẽ |
-| Clouds | Fast hoặc Off | Mây fancy tốn fill-rate |
-| Entity Shadows | Off | Shader đã có bóng thật |
-| Particles | Decreased | Bớt overdraw |
-| Max Framerate | 60 | Đỡ nóng máy, khung hình đều |
-| Mipmap Levels | 2 | Vừa đủ mượt, ít VRAM |
+Open the [Vivid Lite website](${REPO_URL}) → **"Customize"** section → pick a preset → tune 60+ options → download your .zip right in the browser (nothing is uploaded, no signup).
 
-**Mod nên cài thêm (Fabric, miễn phí):** Lithium · FerriteCore · ImmediatelyFast · Entity Culling · ModernFix · Dynamic FPS
+The site also has:
+- 📊 **Real-time FPS estimate** for 3 reference machines
+- 🎬 **Day / night preview** simulated in CSS
+- 📖 **GLSL source viewer** with syntax highlighting
+- 🔧 The **⚡ Performance menu** with all 18 options
 
 ---
 
-## 📁 Cấu trúc file
+## 🐛 Report a bug / Contribute
 
-\`\`\`
-VividLite_v1.0.1_<preset>.zip
-├── README.txt              # hướng dẫn ngắn
-├── CHANGELOG.txt           # lịch sử phiên bản
-└── shaders/
-    ├── shaders.properties  # profiles + menu structure
-    ├── block.properties    # block IDs cho lighting/emission
-    ├── lib/
-    │   ├── settings.glsl   # tất cả #define (thay đổi theo builder)
-    │   ├── uniforms.glsl
-    │   ├── common.glsl
-    │   ├── atmosphere.glsl # sky, sun, moon, sunset colors
-    │   ├── lighting.glsl   # forward lighting model
-    │   ├── shadows.glsl    # distorted shadow mapping + PCF
-    │   ├── fog.glsl        # atmospheric fog with FOG_QUALITY
-    │   ├── waving.glsl     # wind animation for plants/leaves
-    │   └── water.glsl      # analytic wave normals
-    ├── program/            # main GLSL sources
-    │   ├── gbuffers_terrain.glsl
-    │   ├── gbuffers_water.glsl
-    │   ├── gbuffers_entities.glsl
-    │   ├── gbuffers_skybasic.glsl
-    │   ├── gbuffers_clouds.glsl
-    │   ├── shadow.glsl
-    │   ├── composite.glsl  # water depth fog (WATER_FOG)
-    │   ├── composite1.glsl # bloom (BLOOM)
-    │   └── final.glsl      # tonemap + color grading
-    ├── shaders/            # stub .vsh/.fsh files → include program/
-    ├── world-1/            # Nether (no shadow pass)
-    ├── world1/             # End (no shadow pass)
-    └── lang/
-        ├── en_us.lang
-        └── vi_vn.lang
-\`\`\`
-
----
-
-## 🎨 Tạo shader riêng của bạn
-
-Vào [trang web Vivid Lite](../../) → phần **"Tùy chỉnh & Tải"** → chọn preset → tinh chỉnh 50+ tùy chọn → tải file \`.zip\` ngay trên trình duyệt (không upload server, không cần đăng ký).
-
-Trang cũng có:
-- 📊 **Ước tính FPS** real-time cho 3 cấu hình máy tham chiếu
-- 🎬 **Preview** ngày/đêm mô phỏng bằng CSS
-- 📖 **Trình xem mã nguồn GLSL** có tô màu cú pháp
-- 🔧 **Menu ⚡ Performance** với 7 tùy chọn tối ưu
-
----
-
-## 🐛 Báo lỗi / Đóng góp
-
-- **Lỗi shader?** Mở [Issue](../../issues) và dán nội dung \`.minecraft/logs/latest.log\` (dòng có \`ERROR:\`)
-- **Ý tưởng?** Mở [Discussion](../../discussions)
-- **PR?** Hoan nghênh! Vui lòng test trên Iris 1.11.x với Minecraft 26.2 trước khi submit
+- **Shader bug?** Open an [Issue](${REPO_URL}/issues) and paste the ERROR line from .minecraft/logs/latest.log
+- **Idea?** Open a [Discussion](${REPO_URL}/discussions)
+- **PR?** Welcome! Please test on at least one Iris and one OptiFine build before submitting.
 
 ---
 
 ## 📄 License
 
-Lấy cảm hứng từ phong cách hình ảnh của **BSL Shaders (Capt Tatsu)**. **Toàn bộ mã Vivid Lite viết mới từ đầu**, không sử dụng mã của BSL.
+Inspired by the visual style of **BSL Shaders (Capt Tatsu)**. **All Vivid Lite code is written from scratch** and contains no BSL code.
 
-Dùng, sửa, chia sẻ thoải mái — vui lòng **ghi nguồn "Vivid Lite Shaders"** khi tái phát hành.
+Free to use, modify, and redistribute — please **credit "${AUTHOR}"** when re-publishing.
 
-Không liên kết với Mojang hay Microsoft. Minecraft © Mojang AB.
+Not affiliated with Mojang or Microsoft. *Minecraft © Mojang AB.*
 
 ---
 
 <p align="center">
-  <sub>Made with ❤️ cho máy yếu · <a href="../../">Trang chủ</a> · <a href="../../releases">Releases</a></sub>
+  <sub>Made with ❤️ by <a href="${REPO_URL}">${AUTHOR}</a> · <a href="${REPO_URL}">GitHub</a> · <a href="${REPO_URL}/releases">Releases</a></sub>
 </p>
 `;
 }
 
 export function buildChangelog(): string {
-  return `================================================================
+  return `${CREDIT_HEADER}
+================================================================
   VIVID LITE SHADERS  —  CHANGELOG
 ================================================================
 
-v1.1.0  (Compatibility & Night)
--------------------------------
-+ Ho tro Minecraft 1.8 - 26.3, chia 4 nhom version:
-    Legacy  (1.8 - 1.12.2)  block ID so, shadow manual, RGB16
-    Classic (1.13 - 1.16.5) namespaced ID, hardware PCF
-    Modern  (1.17 - 1.20.6) them block 1.17+
-    Latest  (1.21 - 26.3)   block moi nhat
-+ Ho tro OptiFine song song voi Iris (3 che do loader)
-+ Legacy shadow path: sampler2D + manual compare
-+ LAM LAI BAN DEM:
-    - Anh trang that co do bong, theo chu ky trang
-    - 3 tong mau dem: xanh duong / xanh ngoc / tim
-    - Sao 2 lop + nhap nhay + bien thien mau
-    - Dai Ngan Ha vat ngang bau troi
-    - Quang sang mat trang nhieu lop
-    - Suong dem xanh lam
-    - Purkinje shift (canh toi mat bao hoa)
-    - Airglow: chan troi dem khong den tuyen
-+ 7 tuy chon dem moi + menu "Ban dem"
-+ shadow.enabled cho Iris
-+ block.properties sinh theo version
-+ README.md day du cho GitHub
+v${VERSION}  (More optimizations)
+${'-'.repeat(30)}
++ 8 new performance options:
+    SKIP_PCF          : 1-tap shadow instead of 4-tap
+    HALF_RES_BLOOM    : 3x3 bloom blur instead of 5x5
+    SKIP_SPECULAR     : skip water sun glints (saves 1 pow)
+    NO_COLOR_TEMP     : skip warm/cool tint in final pass
+    FAST_NORMALIZE    : inversesqrt instead of normalize (saves 1 sqrt+div)
+    PRECOMPUTED_VIEW  : skip redundant normalize() in water reflection
+    CHEAP_EMISSIVE    : skip smoothstep() in emissive detection
+    FOG_CUTOFF        : hard-cull fog past a distance (no length/exp/sky lookup)
++ Low-level GLSL work:
+    - pow(NdotV, 3) -> x*x*x (Fresnel term)
+    - pow(lm.x, 3)  -> lx*lx*lx (End dimension blocklight)
+    - reflect() inlined manually in water
+    - Blocklight formula pre-fused as a single mad chain
+    - Torch flicker: 2 sin -> 1 sin at non-harmonic frequency
+    - Lighting sum grouped (a+b)+(c+d) for a single FMA chain
+    - End dimension: early return, skips all shadow/normal logic
+    - Stars: two-stage gate (F > 0.0 && F > 0.01) before the hash work
++ Extra Potato preset enables every new option -> ~99% of vanilla FPS
++ Single source of truth for version number (src/shader/version.ts)
 
-v1.0.1  (8 preset + Extra Potato mode)
---------------------------------------
-+ 4 profile moi:
+v1.1.0  (Compatibility & Night)
+${'-'.repeat(30)}
++ Support for Minecraft 1.8 - 26.3, in 4 version buckets:
+    Legacy  (1.8 - 1.12.2)  numeric block IDs, manual shadow, RGB16 buffer
+    Classic (1.13 - 1.16.5) namespaced IDs, hardware PCF
+    Modern  (1.17 - 1.20.6) adds 1.17+ blocks
+    Latest  (1.21 - 26.3)   full new blocks
++ OptiFine support alongside Iris (3 loader modes: Both / Iris / OptiFine)
++ Legacy shadow path: sampler2D + step() manual compare for old drivers
++ NIGHT REWORK:
+    - Real moonlight with shadows, varies with moon phase
+    - 3 night tints: Blue (BSL) / Teal / Purple
+    - 2-layer stars + independent twinkle + warm/cool color variation
+    - Milky Way band across the sky
+    - Multi-layer moon halo
+    - Night fog for depth
+    - Purkinje shift (dim scenes lose saturation)
+    - Airglow so the horizon is never pure black
++ 7 new night options + new "Night" menu
++ shadow.enabled directive for Iris
++ Version-aware block.properties (no more missing-block warnings)
++ Full README.md in the project root for GitHub
+
+v1.0.1  (8 presets + Extra Potato mode)
+${'-'.repeat(30)}
++ 4 new presets:
     - Extra Potato (~98% FPS)
     - Low Potato   (~95% FPS)
     - High Potato  (~88% FPS)
-    - Extra High   (~65% FPS, kich cau hinh)
-+ 7 tuy chon toi uu moi:
-    - SKIP_SKY_PROC     : gradient 2 mau thay sky procedural
-    - SKIP_TONEMAP      : bo duong cong tonemap
-    - SKIP_DITHERING    : bo hash noise chong banding
-    - SIMPLE_WATER      : nuoc phang, khong song, khong fresnel
-    - LOW_RES_SHADOW    : sample bong o 1/2 do phan giai
-    - CULL_DISTANCE     : cat hieu ung dat sau khoang cach
-    - FOG_QUALITY       : 0 = tat, 1 = linear re, 2 = khi quyen
-+ Menu "Performance" moi trong Shader Pack Settings
-+ Cheap linear fog cho preset potato-tier
-+ README.md day du cho GitHub
+    - Extra High   (~65% FPS, maxed out)
++ 7 new performance options:
+    - SKIP_SKY_PROC     : 2-color gradient instead of procedural sky
+    - SKIP_TONEMAP      : skip the tonemap curve
+    - SKIP_DITHERING    : skip hash-noise anti-banding
+    - SIMPLE_WATER      : flat water, no waves, no Fresnel
+    - LOW_RES_SHADOW    : sample shadow at 1/2 resolution grid
+    - CULL_DISTANCE     : cull expensive effects past a distance
+    - FOG_QUALITY       : 0 off / 1 cheap linear / 2 full atmospheric
++ New "Performance" menu in Shader Pack Settings
++ Cheap linear fog for the potato tier
++ Full README.md for GitHub
 
-* Sua loi shader "Use of undeclared identifier 'minLight'"
-  trong terrain_solid (thu tu khai bao trong lighting.glsl)
+* Fixed shader compile error "Use of undeclared identifier 'minLight'"
+  in terrain_solid (declaration order in lighting.glsl)
 
 v1.0.0  (initial release)
---------------------------
-+ Forward lighting kieu BSL (nang am, bong xanh, duoc cam)
-+ Bong do mem voi shadow map meo + PCF phan cung
-+ Bloom 2 tile mipmap (BSL dung 7 tile)
-+ Nuoc phan chieu bau troi + Fresnel + vet nang
-+ Co, hoa, la dung dua (vertex animation)
-+ Suong khi quyen theo gio trong ngay
-+ Hoang hon cam hong, sao dem lap lanh, mat troi tron
-+ Tonemap song dong + saturation + vibrance + vignette
-+ Ho tro Nether va End (khong shadow pass = them FPS)
-+ Menu tieng Viet + tieng Anh
-+ 4 profile: Potato, Low, Medium, High
-+ 40+ tuy chon co the doi trong game
+${'-'.repeat(30)}
++ BSL-style forward lighting (warm sun, blue shadows, orange torch light)
++ Soft shadows with distorted shadow map + hardware PCF
++ 2-tile mipmap bloom (BSL uses 7 tiles)
++ Water sky reflection + Fresnel + sun glints
++ Grass, flowers, leaves waving (vertex animation)
++ Atmospheric fog by time of day
++ Orange/pink sunset, twinkling stars, round sun
++ Vivid tonemap + saturation + vibrance + vignette
++ Nether and End support (no shadow pass = extra FPS)
++ In-game menu (Vietnamese + English)
++ 4 profiles: Potato, Low, Medium, High
++ 40+ tunable options in-game
 
 ================================================================
 `;

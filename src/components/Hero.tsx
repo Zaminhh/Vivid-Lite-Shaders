@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
-import { ArrowRight, Cpu, Download, Gauge, Package, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, Cpu, Download, Gauge, Package, Sparkles } from 'lucide-react';
 import { IMAGES } from '../assets/images';
 import AnimatedNumber from './ui/AnimatedNumber';
+import { VERSION } from '../shader/version';
 
 function BeforeAfter() {
   const ref = useRef<HTMLDivElement>(null);
@@ -29,7 +30,6 @@ function BeforeAfter() {
         <img src={IMAGES.hero} alt="Vivid Lite" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.02]" style={{ filter: 'saturate(1.3) contrast(1.1)' }} draggable={false} />
         <img src={IMAGES.hero} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover mix-blend-soft-light opacity-60" draggable={false} />
       </div>
-      {/* divider with pulsing handle */}
       <div className="absolute inset-y-0 w-0.5 bg-white/80 transition-all" style={{ left: `${pos}%` }}>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <span className="pointer-events-none absolute -inset-3 rounded-full border border-white/40 animate-[pulse-ring_2.5s_cubic-bezier(0.4,0,0.6,1)_infinite]" />
@@ -39,7 +39,7 @@ function BeforeAfter() {
       <span className="absolute left-3 top-3 rounded-md bg-night-950/70 px-2 py-1 font-pixel text-[9px] text-amber-300">VIVID LITE</span>
       <span className="absolute right-3 top-3 rounded-md bg-night-950/70 px-2 py-1 font-pixel text-[9px] text-slate-300">VANILLA</span>
       <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md bg-night-950/70 px-2.5 py-1 text-[10px] text-slate-300 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        Kéo để so sánh ←→
+        Drag to compare ←→
       </span>
     </div>
   );
@@ -47,19 +47,18 @@ function BeforeAfter() {
 
 interface Stat { icon: typeof Gauge; value: number; label: string; suffix?: string; prefix?: string; decimals?: number; textValue?: string; }
 const STATS: Stat[] = [
-  { icon: Gauge, value: 2, prefix: '', suffix: '–25%', label: 'chi phí FPS thay vì 60–75% BSL' },
-  { icon: Cpu, value: 0, textValue: 'Intel HD', label: 'chạy được đồ họa tích hợp cũ' },
-  { icon: Package, value: 8, suffix: ' preset', label: 'từ Extra Potato đến Extra High' },
-  { icon: Sparkles, value: 0, textValue: '1.8→26.3', label: 'Iris và OptiFine đều chạy' },
+  { icon: Gauge, value: 2, prefix: '', suffix: '–25%', label: 'FPS cost vs BSL\'s 60–75%' },
+  { icon: Cpu, value: 0, textValue: 'Intel HD', label: 'runs on ancient iGPUs' },
+  { icon: Package, value: 8, suffix: ' presets', label: 'from Extra Potato to Extra High' },
+  { icon: Sparkles, value: 0, textValue: '1.8→26.3', label: 'Iris and OptiFine supported' },
 ];
 
-const TAGS = ['Bóng đổ mềm', 'Bloom nhẹ', 'Nước phản chiếu', 'Hoàng hôn BSL', 'Cỏ lá đung đưa', 'Tonemap sống động', 'Đêm xanh dịu', 'Đuốc ấm lung linh', 'Sương khí quyển', 'Sao đêm lấp lánh'];
+const TAGS = ['Soft shadows', 'Cheap bloom', 'Water reflection', 'BSL sunset', 'Waving grass & leaves', 'Vivid tonemap', 'Cool blue night', 'Flickering torches', 'Atmospheric fog', 'Twinkling stars'];
 
 export default function Hero() {
   return (
     <section id="top" className="relative overflow-hidden pt-28 pb-16 md:pt-36 md:pb-24">
       <div className="pointer-events-none absolute inset-0 -z-10 grid-bg" />
-      {/* soft animated gradient blob (single, subtle, doesn't lag) */}
       <div className="pointer-events-none absolute -top-32 left-1/2 -z-10 h-[420px] w-[820px] -translate-x-1/2 rounded-full opacity-40 animate-float-slow"
         style={{ background: 'radial-gradient(closest-side, rgba(251,191,36,0.25), transparent 70%)' }} />
 
@@ -74,19 +73,19 @@ export default function Hero() {
               Minecraft 1.8 → 26.3 · Iris + OptiFine
             </span>
             <span className="inline-flex animate-fade-up items-center gap-1.5 rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1 text-xs font-semibold text-indigo-200 [animation-delay:100ms]">
-              <span>🌙</span> v1.1.0 · Ban đêm mới · 8 preset
+              <span>⚡</span> v{VERSION} · 18 perf options · 8 presets
             </span>
           </div>
           <h1 className="animate-fade-up mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl [animation-delay:80ms]">
-            Đẹp như <span className="text-gradient">BSL</span>,
-            <br />nhẹ như <span className="relative inline-block">Vanilla<span className="absolute -bottom-1 left-0 h-1 w-full origin-left animate-[bar_1.2s_cubic-bezier(0.16,1,0.3,1)_0.9s_both] rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400" /></span>.
+            As pretty as <span className="text-gradient">BSL</span>,
+            <br />as light as <span className="relative inline-block">Vanilla<span className="absolute -bottom-1 left-0 h-1 w-full origin-left animate-[bar_1.2s_cubic-bezier(0.16,1,0.3,1)_0.9s_both] rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400" /></span>.
           </h1>
           <p className="animate-fade-up mt-5 max-w-xl text-lg text-slate-300 [animation-delay:180ms]">
-            <strong className="text-white">Vivid Lite</strong> mang hoàng hôn cam rực, bóng đổ mềm, nước phản chiếu và bloom dịu của BSL — nhưng viết lại từ đầu để <strong className="text-white">chạy mượt trên máy yếu, kể cả siêu yếu</strong>. Không SSR, không volumetric, không TAA: chỉ giữ những gì tạo nên vẻ đẹp.
+            <strong className="text-white">Vivid Lite</strong> brings the warm sunset, soft shadows, water reflections, bloom and the night sky of BSL — but rewritten from scratch to <strong className="text-white">run smoothly on weak hardware, even ultra-weak</strong>. No SSR, no volumetric light, no TAA: just what makes Minecraft look beautiful.
           </p>
           <div className="animate-fade-up mt-8 flex flex-wrap items-center gap-3 [animation-delay:280ms]">
-            <a href="#builder" className="btn-primary"><Download className="h-5 w-5" /> Tùy chỉnh & tải .zip</a>
-            <a href="#perf" className="btn-ghost group">Xem cách boost FPS <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></a>
+            <a href="#builder" className="btn-primary"><Download className="h-5 w-5" /> Customize & download .zip</a>
+            <a href="#perf" className="btn-ghost group">See how we boost FPS <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></a>
           </div>
           <dl className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
             {STATS.map((st, i) => (
@@ -103,15 +102,13 @@ export default function Hero() {
 
         <div className="relative animate-scale-in [animation-delay:200ms]">
           <BeforeAfter />
-          {/* Floating sparkle icons */}
           <span className="pointer-events-none absolute -top-3 -right-2 hidden text-amber-300 animate-float md:block">
             <Sparkles className="h-6 w-6 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
           </span>
           <span className="pointer-events-none absolute -bottom-2 -left-2 hidden text-sky-300 animate-float [animation-delay:1.5s] md:block">
-            <Zap className="h-5 w-5 drop-shadow-[0_0_8px_rgba(125,211,252,0.6)]" />
+            <Sparkles className="h-5 w-5 drop-shadow-[0_0_8px_rgba(125,211,252,0.6)]" />
           </span>
 
-          {/* Marquee of feature tags */}
           <div className="mt-4 marquee-fade overflow-hidden">
             <div className="marquee flex w-max gap-2 text-xs text-slate-400">
               {[...TAGS, ...TAGS].map((t, i) => (

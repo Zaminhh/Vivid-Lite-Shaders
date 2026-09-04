@@ -1,50 +1,51 @@
 import { ExternalLink, FolderInput, Gamepad2, Layers, Settings2, Wrench } from 'lucide-react';
 import Reveal from './ui/Reveal';
+import { VERSION } from '../shader/version';
 
 const STEPS = [
   {
     icon: Layers,
-    title: 'Chọn Iris hoặc OptiFine',
-    body: 'Iris + Sodium (Fabric) cho FPS cao nhất — khuyên dùng. Nếu chơi version rất cũ hoặc cần OptiFine, chọn chế độ "OptiFine" ở phần Tùy chỉnh. Vivid Lite hỗ trợ cả hai, Minecraft 1.8 → 26.3.',
+    title: 'Choose Iris or OptiFine',
+    body: 'Iris + Sodium (Fabric) gives the highest FPS — recommended. If you play a very old version or need OptiFine, pick "OptiFine" loader in the Customize section. Vivid Lite supports both, Minecraft 1.8 → 26.3.',
     link: { href: 'https://fabricmc.net/use/installer/', label: 'fabricmc.net' },
   },
   {
     icon: Wrench,
-    title: 'Cài mod / OptiFine đúng version',
-    body: 'Iris: tải Sodium + Iris (.jar) từ Modrinth bỏ vào .minecraft/mods. OptiFine: tải HD U đúng version tại optifine.net rồi chạy installer.',
-    link: { href: 'https://modrinth.com/mod/iris/versions', label: 'Iris trên Modrinth' },
+    title: 'Install mod / OptiFine for your version',
+    body: 'Iris: download Sodium + Iris (.jar) from Modrinth, drop into .minecraft/mods. OptiFine: download HD U for your version at optifine.net and run the installer.',
+    link: { href: 'https://modrinth.com/mod/iris/versions', label: 'Iris on Modrinth' },
   },
   {
     icon: FolderInput,
-    title: 'Bỏ file .zip vào shaderpacks',
-    body: 'Tải Vivid Lite ở phần trên rồi bỏ NGUYÊN file .zip (không giải nén) vào .minecraft/shaderpacks. Windows: %appdata%\\.minecraft\\shaderpacks',
+    title: 'Drop the .zip into shaderpacks',
+    body: `Download VividLite_v${VERSION}_<preset>.zip from Releases or via the web builder. Drop the .zip AS-IS (❗ do not extract) into .minecraft/shaderpacks. Windows path: %appdata%\\.minecraft\\shaderpacks`,
   },
   {
     icon: Gamepad2,
-    title: 'Bật trong game',
-    body: 'Iris: Options → Video Settings → Shader Packs… OptiFine: Options → Video Settings → Shaders… Chọn "VividLite_v1.1.0_….zip" → Apply. Bấm "Shader Pack Settings" để đổi 1 trong 8 profile hoặc tinh chỉnh 60+ tùy chọn (có menu 🌙 Ban đêm và ⚡ Hiệu năng).',
+    title: 'Enable in-game',
+    body: `Iris: Options → Video Settings → Shader Packs… OptiFine: Options → Video Settings → Shaders… Pick "VividLite_v${VERSION}_….zip" → Apply. Click "Shader Pack Settings" to switch between 8 profiles or tune 60+ options (includes 🌙 Night and ⚡ Performance menus).`,
   },
 ];
 
 const VIDEO_SETTINGS = [
-  ['Render Distance', '6–8 chunk', 'Ảnh hưởng FPS nhiều nhất sau shader'],
-  ['Simulation Distance', '5', 'Giảm tải CPU'],
-  ['Graphics', 'Fast', 'Lá cây đặc = ít pixel phải vẽ hơn'],
-  ['Clouds', 'Fast hoặc Off', 'Mây fancy tốn fill-rate trên iGPU'],
-  ['Entity Shadows', 'Off', 'Shader đã có bóng thật'],
-  ['Particles', 'Decreased', 'Bớt overdraw'],
-  ['Max Framerate', '60', 'Đỡ nóng máy, khung hình đều hơn'],
-  ['Fullscreen Resolution', '1366×768 hoặc 1280×720', 'Với iGPU, độ phân giải quyết định tất cả'],
-  ['Mipmap Levels', '2', 'Vừa đủ mượt, ít VRAM'],
+  ['Render Distance', '6–8 chunks', 'Biggest FPS impact after shader'],
+  ['Simulation Distance', '5', 'Reduces CPU load'],
+  ['Graphics', 'Fast', 'Dense leaves = fewer pixels to draw'],
+  ['Clouds', 'Fast or Off', 'Fancy clouds are fill-rate heavy on iGPU'],
+  ['Entity Shadows', 'Off', 'The shader already draws real shadows'],
+  ['Particles', 'Decreased', 'Less overdraw'],
+  ['Max Framerate', '60', 'Less heat, more consistent frame times'],
+  ['Fullscreen Resolution', '1366×768 or 1280×720', 'On iGPU, resolution matters most'],
+  ['Mipmap Levels', '2', 'Smooth enough, less VRAM'],
 ];
 
 const EXTRA_MODS = [
-  ['Lithium', 'Tối ưu logic game (CPU)'],
-  ['FerriteCore', 'Giảm RAM'],
-  ['ImmediatelyFast', 'Tăng tốc render UI/entity'],
-  ['Entity Culling', 'Không vẽ mob bị che khuất'],
-  ['ModernFix', 'Vào game nhanh, ít lag chunk'],
-  ['Dynamic FPS', 'Giảm tải khi thu nhỏ cửa sổ'],
+  ['Lithium', 'Optimize game logic (CPU)'],
+  ['FerriteCore', 'Less RAM usage'],
+  ['ImmediatelyFast', 'Speed up UI/entity rendering'],
+  ['Entity Culling', 'Don\'t render hidden mobs'],
+  ['ModernFix', 'Faster load, less chunk lag'],
+  ['Dynamic FPS', 'Reduce load when window unfocused'],
 ];
 
 export default function InstallGuide() {
@@ -53,9 +54,9 @@ export default function InstallGuide() {
       <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-transparent via-emerald-500/[0.04] to-transparent" />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Reveal className="max-w-2xl">
-          <p className="text-sm font-semibold uppercase tracking-widest text-amber-300">Cài đặt</p>
-          <h2 className="section-title mt-2">4 bước, 5 phút</h2>
-          <p className="mt-4 text-slate-400">Chạy trên <strong className="text-white">Iris + Sodium</strong> (nhanh nhất) hoặc <strong className="text-white">OptiFine</strong>, từ Minecraft 1.8 đến 26.3.</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-amber-300">Installation</p>
+          <h2 className="section-title mt-2">4 steps, 5 minutes</h2>
+          <p className="mt-4 text-slate-400">Works on <strong className="text-white">Iris + Sodium</strong> (fastest) or <strong className="text-white">OptiFine</strong>, from Minecraft 1.8 to 26.3.</p>
         </Reveal>
 
         <ol className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -80,7 +81,7 @@ export default function InstallGuide() {
           <div className="glass overflow-hidden rounded-2xl">
             <div className="flex items-center gap-2 border-b border-white/10 px-5 py-4">
               <Settings2 className="h-4 w-4 text-amber-300" />
-              <h3 className="font-bold text-white">Video Settings đề xuất cho máy yếu</h3>
+              <h3 className="font-bold text-white">Recommended Video Settings for weak hardware</h3>
             </div>
             <table className="w-full text-sm">
               <tbody className="divide-y divide-white/5">
@@ -97,7 +98,7 @@ export default function InstallGuide() {
 
           <div className="space-y-6">
             <div className="glass rounded-2xl p-5">
-              <h3 className="font-bold text-white">Mod nên cài thêm (Fabric, miễn phí)</h3>
+              <h3 className="font-bold text-white">Recommended companion mods (Fabric, free)</h3>
               <ul className="mt-3 space-y-2">
                 {EXTRA_MODS.map(([name, why]) => (
                   <li key={name} className="flex items-center justify-between gap-3 text-sm">
@@ -108,9 +109,8 @@ export default function InstallGuide() {
               </ul>
             </div>
             <div className="rounded-2xl border border-sky-400/20 bg-sky-400/5 p-5 text-sm text-sky-100/90">
-              <strong className="text-sky-200">RAM:</strong> máy 4 GB đặt <span className="font-mono">-Xmx1536M</span>, máy 8 GB đặt{' '}
-              <span className="font-mono">-Xmx2G</span> trong JVM Arguments của launcher. Cấp quá nhiều RAM cho Java trên máy yếu
-              lại làm giật hơn.
+              <strong className="text-sky-200">RAM:</strong> on 4 GB systems set <span className="font-mono">-Xmx1536M</span>, on 8 GB set
+              <span className="font-mono"> -Xmx2G</span> in the launcher's JVM arguments. Giving Java too much RAM on weak hardware actually <em>causes</em> more stutter.
             </div>
           </div>
         </div>

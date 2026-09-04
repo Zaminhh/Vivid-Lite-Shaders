@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Download, Menu, X } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { VERSION } from '../shader/version';
 
 const LINKS = [
-  { href: '#features', label: 'Tính năng' },
-  { href: '#perf', label: 'Hiệu năng' },
-  { href: '#compat', label: 'Tương thích' },
-  { href: '#builder', label: 'Tùy chỉnh & Tải' },
-  { href: '#install', label: 'Cài đặt' },
+  { href: '#features', label: 'Features' },
+  { href: '#perf', label: 'Performance' },
+  { href: '#compat', label: 'Compatibility' },
+  { href: '#lag', label: 'How we cut lag' },
+  { href: '#builder', label: 'Customize' },
+  { href: '#install', label: 'Install' },
   { href: '#faq', label: 'FAQ' },
 ];
 
@@ -20,7 +22,7 @@ export function Logo({ className }: { className?: string }) {
       </span>
       <span className="leading-tight">
         <span className="block text-base font-extrabold tracking-tight text-white">Vivid Lite</span>
-        <span className="block font-pixel text-[8px] text-amber-300/90">v1.1.0 · 1.8–26.3</span>
+        <span className="block font-pixel text-[8px] text-amber-300/90">v{VERSION} · 1.8–26.3</span>
       </span>
     </a>
   );
@@ -54,7 +56,6 @@ export default function Navbar() {
         scrolled ? 'bg-night-900/90 border-b border-white/10' : 'bg-transparent',
       )}
     >
-      {/* scroll progress bar (GPU-accelerated: only transform) */}
       <div className="absolute bottom-0 left-0 right-0 h-0.5 origin-left bg-gradient-to-r from-amber-400 via-rose-400 to-sky-400"
         style={{ transform: `scaleX(${progress / 100})`, transition: 'transform 0.1s linear', willChange: 'transform' }} />
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -73,19 +74,19 @@ export default function Navbar() {
         </ul>
         <div className="hidden md:block">
           <a href="#builder" className="btn-primary !px-4 !py-2 text-sm">
-            <Download className="h-4 w-4" /> Tải shader
+            <Download className="h-4 w-4" /> Get shader
           </a>
         </div>
         <button
           className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/5 md:hidden"
           onClick={() => setOpen((o) => !o)}
-          aria-label="Mở menu"
+          aria-label="Toggle menu"
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </nav>
       {open && (
-        <div className="border-t border-white/10 bg-night-900/95 backdrop-blur-xl md:hidden">
+        <div className="border-t border-white/10 bg-night-900/95 md:hidden">
           <ul className="mx-auto max-w-7xl space-y-1 px-4 py-3">
             {LINKS.map((l) => (
               <li key={l.href}>
@@ -100,7 +101,7 @@ export default function Navbar() {
             ))}
             <li className="pt-2">
               <a href="#builder" onClick={() => setOpen(false)} className="btn-primary w-full text-sm">
-                <Download className="h-4 w-4" /> Tải shader
+                <Download className="h-4 w-4" /> Get shader
               </a>
             </li>
           </ul>

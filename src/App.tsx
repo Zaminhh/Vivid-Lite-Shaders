@@ -4,6 +4,7 @@ import Features from './components/Features';
 import PerformanceExplainer from './components/PerformanceExplainer';
 import Compatibility from './components/Compatibility';
 import Compare from './components/Compare';
+import LagExplainer from './components/LagExplainer';
 import Builder from './components/Builder';
 import InstallGuide from './components/InstallGuide';
 import FAQ from './components/FAQ';
@@ -17,6 +18,7 @@ export default function App() {
         <Hero />
         <Features />
         <PerformanceExplainer />
+        <LagExplainer />
         <Compatibility />
         <Compare />
         <Builder />

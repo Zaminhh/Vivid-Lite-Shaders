@@ -5,19 +5,22 @@ import Reveal from './ui/Reveal';
 type Cell = { ok: boolean | 'partial'; note?: string };
 
 const ROWS: { feature: string; bsl: Cell; lite: Cell }[] = [
-  { feature: 'Bóng đổ mềm', bsl: { ok: true, note: '2048px+' }, lite: { ok: true, note: '512–2048px, tắt được' } },
-  { feature: 'Bloom', bsl: { ok: true, note: '7 tile' }, lite: { ok: true, note: '2 tile mipmap' } },
-  { feature: 'Hoàng hôn cam, bầu trời, sương', bsl: { ok: true }, lite: { ok: true } },
-  { feature: 'Nước phản chiếu', bsl: { ok: true, note: 'SSR' }, lite: { ok: 'partial', note: 'Sky + specular' } },
-  { feature: 'Sương nước theo độ sâu', bsl: { ok: true }, lite: { ok: true, note: 'tùy chọn' } },
-  { feature: 'Cỏ / lá đung đưa', bsl: { ok: true }, lite: { ok: true } },
-  { feature: 'Đuốc ấm, emissive, đèn cầm tay', bsl: { ok: true }, lite: { ok: true } },
+  { feature: 'Soft shadows', bsl: { ok: true, note: '2048px+' }, lite: { ok: true, note: '512–2048px, toggleable' } },
+  { feature: 'Bloom', bsl: { ok: true, note: '7 tiles' }, lite: { ok: true, note: '2 mip tiles' } },
+  { feature: 'Orange sunset, blue sky, haze', bsl: { ok: true }, lite: { ok: true } },
+  { feature: 'Water reflection', bsl: { ok: true, note: 'SSR' }, lite: { ok: 'partial', note: 'Sky + specular' } },
+  { feature: 'Water depth fog', bsl: { ok: true }, lite: { ok: true, note: 'toggleable' } },
+  { feature: 'Waving grass & leaves', bsl: { ok: true }, lite: { ok: true } },
+  { feature: 'Warm torches, emissives, hand light', bsl: { ok: true }, lite: { ok: true } },
   { feature: 'Tonemap, saturation, vibrance, vignette', bsl: { ok: true }, lite: { ok: true } },
   { feature: 'Nether & End', bsl: { ok: true }, lite: { ok: true, note: 'no shadow pass' } },
-  { feature: 'SSR', bsl: { ok: true }, lite: { ok: false, note: 'cố ý bỏ' } },
-  { feature: 'Volumetric light', bsl: { ok: true }, lite: { ok: false, note: 'cố ý bỏ' } },
-  { feature: 'SSAO / TAA / Motion blur', bsl: { ok: true }, lite: { ok: false, note: 'cố ý bỏ' } },
-  { feature: 'Pass toàn màn hình', bsl: { ok: 'partial', note: '6–12' }, lite: { ok: true, note: '1–3' } },
+  { feature: 'Night with moon phases, Milky Way', bsl: { ok: 'partial', note: 'basic' }, lite: { ok: true, note: 'full rework' } },
+  { feature: 'SSR', bsl: { ok: true }, lite: { ok: false, note: 'intentionally cut' } },
+  { feature: 'Volumetric light', bsl: { ok: true }, lite: { ok: false, note: 'intentionally cut' } },
+  { feature: 'SSAO / TAA / Motion blur', bsl: { ok: true }, lite: { ok: false, note: 'intentionally cut' } },
+  { feature: 'Full-screen passes', bsl: { ok: 'partial', note: '6–12' }, lite: { ok: true, note: '1–3' } },
+  { feature: 'Minecraft version support', bsl: { ok: 'partial', note: '1.16+' }, lite: { ok: true, note: '1.8 – 26.3' } },
+  { feature: 'OptiFine support', bsl: { ok: true }, lite: { ok: true, note: 'Iris + OptiFine' } },
 ];
 
 function Mark({ cell }: { cell: Cell }) {
@@ -39,16 +42,16 @@ export default function Compare() {
     <section id="compare" className="relative py-20 md:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Reveal className="max-w-2xl">
-          <p className="text-sm font-semibold uppercase tracking-widest text-amber-300">So sánh</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-amber-300">Compare</p>
           <h2 className="section-title mt-2">Vivid Lite vs BSL v8</h2>
-          <p className="mt-4 text-slate-400">Không phải bản sao — là bản thiết kế lại cùng gu thẩm mỹ. Những hiệu ứng bị bỏ đều tốn 10–40% FPS mỗi cái trên iGPU. <a href="#perf" className="text-sky-300 underline underline-offset-2 hover:text-sky-200">Xem chi tiết cách thay thế →</a></p>
+          <p className="mt-4 text-slate-400">Not a clone — a redesign with the same visual taste. The things we cut each cost 10–40% FPS on iGPU. <a href="#perf" className="text-sky-300 underline underline-offset-2 hover:text-sky-200">See how they're replaced →</a></p>
         </Reveal>
         <Reveal delay={100} className="glass mt-8 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[520px] text-left text-sm">
+            <table className="w-full min-w-[560px] text-left text-sm">
               <thead className="bg-white/5 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-semibold">Tính năng</th>
+                  <th className="px-5 py-2.5 font-semibold">Feature</th>
                   <th className="px-5 py-2.5 font-semibold">BSL v8</th>
                   <th className="px-5 py-2.5 font-semibold text-amber-300">Vivid Lite</th>
                 </tr>

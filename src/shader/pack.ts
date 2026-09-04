@@ -4,7 +4,6 @@ import { PROGRAM_FILES } from './glsl-programs';
 import {
   buildBlockProperties,
   LANG_EN,
-  LANG_VI,
   PRESET_META,
   buildReadme,
   buildReadmeGithub,
@@ -16,11 +15,12 @@ import {
   type ShaderSettings,
 } from './settings';
 
-export const PACK_VERSION = '1.1.0';
+export { VERSION as PACK_VERSION } from './version';
+import { VERSION } from './version';
 
 export function presetLabel(s: ShaderSettings): string {
   const id = detectPreset(s);
-  return id === 'custom' ? 'Tùy chỉnh' : PRESET_META[id].name;
+  return id === 'custom' ? 'Custom' : PRESET_META[id].name;
 }
 
 /** Every file of the shader pack, keyed by its path inside the zip. */
@@ -33,7 +33,6 @@ export function buildPackFiles(s: ShaderSettings): Record<string, string> {
     'shaders/shaders.properties': buildShadersProperties(s, label),
     'shaders/block.properties': buildBlockProperties(s.mcVersion),
     'shaders/lang/en_us.lang': LANG_EN,
-    'shaders/lang/vi_vn.lang': LANG_VI,
     'shaders/lib/settings.glsl': buildSettingsGlsl(s, label),
     ...LIB_FILES,
     ...PROGRAM_FILES,
@@ -44,10 +43,10 @@ export function buildPackFiles(s: ShaderSettings): Record<string, string> {
 
 export function packFileName(s: ShaderSettings): string {
   const id = detectPreset(s);
-  if (id === 'custom') return `VividLite_v${PACK_VERSION}_Custom.zip`;
+  if (id === 'custom') return `VividLite_v${VERSION}_Custom.zip`;
   // camelCase → PascalCase (e.g. extraPotato → ExtraPotato)
   const suffix = id.charAt(0).toUpperCase() + id.slice(1);
-  return `VividLite_v${PACK_VERSION}_${suffix}.zip`;
+  return `VividLite_v${VERSION}_${suffix}.zip`;
 }
 
 export function packSizeBytes(files: Record<string, string>): number {

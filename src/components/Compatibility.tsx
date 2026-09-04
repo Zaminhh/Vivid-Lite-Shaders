@@ -4,12 +4,12 @@ import Reveal from './ui/Reveal';
 import { LOADER_META, VERSION_TARGETS, type LoaderId, type VersionTargetId } from '../shader/compat';
 
 const NIGHT_FEATURES = [
-  { title: 'Ánh trăng theo chu kỳ', desc: 'Ánh trăng có đổ bóng thật. Trăng tròn sáng gấp ~3× trăng non (đọc uniform moonPhase).' },
-  { title: '3 tông màu đêm', desc: 'Xanh dương kiểu BSL, xanh ngọc mát, hoặc tím huyền bí — đổi ngay trong game.' },
-  { title: 'Sao 2 lớp + nhấp nháy', desc: 'Lớp sáng thưa + lớp mờ dày, mỗi sao nhấp nháy độc lập, có sao ấm và sao lạnh.' },
-  { title: 'Dải Ngân Hà', desc: 'Dải sao mờ vắt ngang bầu trời với vón cục tự nhiên — tái dùng hash sẵn có, chi phí ~0%.' },
-  { title: 'Quầng sáng mặt trăng', desc: 'Halo nhiều lớp quanh mặt trăng, mềm và tự nhiên như ảnh chụp thật.' },
-  { title: 'Sương đêm + Purkinje', desc: 'Sương xanh lam tạo chiều sâu; cảnh tối mất bão hòa ngả về tông đêm như mắt người.' },
+  { title: 'Moonlight follows the phase', desc: 'Real directional moonlight that casts shadows. A full moon is ~3× brighter than a new moon (reads the moonPhase uniform).' },
+  { title: '3 night tints', desc: 'Blue (BSL) · Teal · Purple — switch instantly in-game.' },
+  { title: '2-layer stars + twinkle', desc: 'Sparse bright layer + dense faint layer, each star twinkles independently, with warm/cool color variation.' },
+  { title: 'Milky Way band', desc: 'Faint band of stars across the sky with natural clumping — reuses existing hash, ~0 cost.' },
+  { title: 'Moon glow halo', desc: 'Multi-layer halo around the moon, soft and photographic.' },
+  { title: 'Night fog + Purkinje shift', desc: 'Cool blue haze at distance; dim scenes lose saturation and shift toward the night tint, just like human eyes in low light.' },
 ];
 
 export default function Compatibility() {
@@ -18,15 +18,14 @@ export default function Compatibility() {
       <div className="pointer-events-none absolute inset-0 -z-10 opacity-30 dot-bg" />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
-        {/* ── Version support ── */}
         <Reveal>
-          <p className="text-sm font-semibold uppercase tracking-widest text-sky-300">Tương thích</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-sky-300">Compatibility</p>
           <h2 className="section-title mt-2">
             Minecraft <span className="text-gradient">1.8 → 26.3</span>, Iris <em className="not-italic text-slate-400">&</em> OptiFine
           </h2>
           <p className="mt-4 max-w-3xl text-slate-400">
-            Web builder tự sinh file phù hợp với phiên bản bạn chọn: block ID số cho 1.8–1.12, shadow so sánh thủ công cho driver
-            cũ, buffer format an toàn, và menu phẳng cho OptiFine đời cũ.
+            The web builder generates a pack tailored to your version: numeric block IDs for 1.8–1.12, manual shadow compare for old
+            drivers, safe buffer formats, and a flat menu for legacy OptiFine.
           </p>
         </Reveal>
 
@@ -45,8 +44,8 @@ export default function Compatibility() {
                 <p className="mt-1 font-mono text-[10px] text-slate-500">{vt.range}</p>
                 <p className="mt-2 text-xs leading-relaxed text-slate-400">{vt.note}</p>
                 <div className="mt-3 flex flex-wrap gap-1">
-                  {vt.numericBlockIds && <span className="rounded bg-amber-400/10 px-1.5 py-0.5 text-[9px] text-amber-200">block ID số</span>}
-                  {vt.legacyShadow && <span className="rounded bg-rose-400/10 px-1.5 py-0.5 text-[9px] text-rose-200">shadow thủ công</span>}
+                  {vt.numericBlockIds && <span className="rounded bg-amber-400/10 px-1.5 py-0.5 text-[9px] text-amber-200">numeric IDs</span>}
+                  {vt.legacyShadow && <span className="rounded bg-rose-400/10 px-1.5 py-0.5 text-[9px] text-rose-200">manual shadow</span>}
                   {vt.legacyBuffers && <span className="rounded bg-violet-400/10 px-1.5 py-0.5 text-[9px] text-violet-200">RGB16</span>}
                   {!vt.legacyShadow && <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[9px] text-emerald-200">hardware PCF</span>}
                 </div>
@@ -55,7 +54,6 @@ export default function Compatibility() {
           })}
         </div>
 
-        {/* ── Loaders ── */}
         <div className="mt-12 grid gap-3 md:grid-cols-3">
           {(Object.keys(LOADER_META) as LoaderId[]).map((id, i) => {
             const lm = LOADER_META[id];
@@ -65,7 +63,7 @@ export default function Compatibility() {
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{lm.emoji}</span>
                   <h3 className="font-bold text-white">{lm.label}</h3>
-                  {id === 'both' && <span className="ml-auto rounded-full bg-amber-400 px-2 py-0.5 text-[9px] font-bold text-night-950">MẶC ĐỊNH</span>}
+                  {id === 'both' && <span className="ml-auto rounded-full bg-amber-400 px-2 py-0.5 text-[9px] font-bold text-night-950">DEFAULT</span>}
                 </div>
                 <p className="mt-2 text-sm leading-relaxed text-slate-400">{lm.desc}</p>
               </Reveal>
@@ -75,14 +73,14 @@ export default function Compatibility() {
 
         <Reveal delay={150} className="glass mt-6 p-5">
           <h3 className="flex items-center gap-2 text-sm font-bold text-white">
-            <Puzzle className="h-4 w-4 text-sky-300" /> Compatibility layer làm gì?
+            <Puzzle className="h-4 w-4 text-sky-300" /> What the compatibility layer does
           </h3>
           <div className="mt-3 grid gap-3 text-xs text-slate-400 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              ['Block IDs', '1.8–1.12 không có namespaced ID → sinh block.properties bằng ID số (31, 18, 8…).'],
-              ['Shadow sampling', 'Driver cũ không tin cậy sampler2DShadow → dùng sampler2D + step() thủ công.'],
-              ['Buffer format', 'R11F_G11F_B10F không hỗ trợ đầy đủ ở OptiFine cũ → fallback RGB16.'],
-              ['Menu structure', 'OptiFine <1.13 không có screen.X với <empty> → menu phẳng một cấp.'],
+              ['Block IDs', '1.8–1.12 has no namespaced IDs → generate block.properties with numeric IDs (31, 18, 8…).'],
+              ['Shadow sampling', 'Old drivers don\'t trust sampler2DShadow → use sampler2D + step() manual compare.'],
+              ['Buffer format', 'R11F_G11F_B10F isn\'t fully supported on old OptiFine → fall back to RGB16.'],
+              ['Menu structure', 'OptiFine <1.13 has no screen.X with <empty> → flat single-level menu.'],
             ].map(([k, v]) => (
               <div key={k} className="rounded-lg border border-white/6 bg-white/[0.02] p-3">
                 <div className="font-semibold text-slate-200">{k}</div>
@@ -91,20 +89,19 @@ export default function Compatibility() {
             ))}
           </div>
           <p className="mt-3 flex items-center gap-1.5 text-[11px] text-emerald-300">
-            <Check className="h-3.5 w-3.5" /> Toàn bộ shader viết bằng <span className="font-mono">GLSL 120</span> — chuẩn chung của cả OptiFine và Iris.
+            <Check className="h-3.5 w-3.5" /> Every shader is written in <span className="font-mono">GLSL 120</span> — the common ground of OptiFine and Iris.
           </p>
         </Reveal>
 
-        {/* ── Night rework ── */}
         <div className="mt-20">
           <Reveal>
-            <p className="text-sm font-semibold uppercase tracking-widest text-indigo-300">Mới ở v1.1.0</p>
+            <p className="text-sm font-semibold uppercase tracking-widest text-indigo-300">Added in v1.1.0</p>
             <h2 className="section-title mt-2">
-              Ban đêm <span className="text-gradient">làm lại hoàn toàn</span> 🌙
+              Night, <span className="text-gradient">completely reworked</span> 🌙
             </h2>
             <p className="mt-4 max-w-3xl text-slate-400">
-              Đêm không còn là "ban ngày tối đi". Ánh trăng có hướng và đổ bóng thật, bầu trời sâu hơn, sao nhiều lớp, và mắt bạn
-              thích nghi với bóng tối giống ngoài đời.
+              Night is no longer "daytime but darker". Moonlight has a real direction and casts shadows, the sky has more depth, stars
+              have multiple layers, and your eyes adapt to the dark like in real life.
             </p>
           </Reveal>
 
@@ -124,10 +121,11 @@ export default function Compatibility() {
           <Reveal delay={200} className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-5">
             <Cpu className="h-5 w-5 shrink-0 text-emerald-300" />
             <p className="flex-1 text-sm text-slate-300">
-              <strong className="text-white">Tất cả gần như miễn phí.</strong> Dải Ngân Hà và lớp sao thứ hai tái dùng hàm hash đã có
-              trong pipeline — không texture, không pass phụ. Tổng chi phí ban đêm dưới <span className="font-mono text-emerald-300">1% FPS</span>.
+              <strong className="text-white">Almost all of it is free.</strong> The Milky Way and the second star layer reuse the existing
+              <code className="mx-1 rounded bg-night-950/40 px-1 text-amber-200">hash13()</code> call — no texture, no extra pass. Total
+              night cost is under <span className="font-mono text-emerald-300">1% FPS</span>.
             </p>
-            <a href="#builder" className="btn-primary !px-4 !py-2 text-sm">Thử ngay 🌙</a>
+            <a href="#builder" className="btn-primary !px-4 !py-2 text-sm">Try it now 🌙</a>
           </Reveal>
         </div>
       </div>
