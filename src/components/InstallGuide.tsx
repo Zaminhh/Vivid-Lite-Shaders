@@ -22,7 +22,7 @@ const STEPS = [
   {
     icon: Gamepad2,
     title: 'Bật trong game',
-    body: 'Options → Video Settings → Shader Packs… → chọn "VividLite_v1.0.0_….zip" → Apply. Bấm "Shader Pack Settings" để đổi profile hoặc tinh chỉnh.',
+    body: 'Options → Video Settings → Shader Packs… → chọn "VividLite_v1.0.1_….zip" → Apply. Bấm "Shader Pack Settings" để đổi 1 trong 8 profile hoặc tinh chỉnh 50+ tùy chọn.',
   },
 ];
 

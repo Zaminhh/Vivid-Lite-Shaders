@@ -140,31 +140,36 @@ void main() {
 #elif WATER_TINT == 2
         albedo *= vec3(1.1, 0.95, 0.6);   // swamp green-yellow
 #endif
-#ifdef WATER_WAVES
-        if (abs(normal.y) > 0.5) normal = getWaveNormal(worldPos, frameTimeCounter, normal);
+        float waterDist = length(feetPos);
+#if defined WATER_WAVES && !defined SIMPLE_WATER
+        // skip wave computation past CULL_DISTANCE — invisible anyway on weak GPUs
+        if (abs(normal.y) > 0.5 && waterDist < CULL_DISTANCE) normal = getWaveNormal(worldPos, frameTimeCounter, normal);
 #endif
         vec3  lit   = getLighting(albedo, normal, lmcoord, feetPos, 0.0, 0.0, rainStrength, sunDirW, lightDirW, fogLin);
         float alpha = WATER_ALPHA;
 
-#ifdef WATER_REFLECTION
-        vec3  viewDir = normalize(feetPos);
-        vec3  n       = dot(normal, viewDir) > 0.0 ? -normal : normal;
-        float NdotV   = sat(dot(-viewDir, n));
-        float fresnel = 0.06 + 0.94 * pow(1.0 - NdotV, 3.0);
-        vec3  refl    = reflect(viewDir, n);
-        refl.y        = max(refl.y, 0.02);
-        refl          = normalize(refl);
+#if defined WATER_REFLECTION && !defined SIMPLE_WATER
+        // also cull expensive reflection past CULL_DISTANCE
+        if (waterDist < CULL_DISTANCE) {
+            vec3  viewDir = normalize(feetPos);
+            vec3  n       = dot(normal, viewDir) > 0.0 ? -normal : normal;
+            float NdotV   = sat(dot(-viewDir, n));
+            float fresnel = 0.06 + 0.94 * pow(1.0 - NdotV, 3.0);
+            vec3  refl    = reflect(viewDir, n);
+            refl.y        = max(refl.y, 0.02);
+            refl          = normalize(refl);
 
-        vec3 lightCol, ambientCol;
-        getLightColors(sunDirW.y, rainStrength, fogLin, lightCol, ambientCol);
-        float skyVis  = smoothstep(0.3, 0.9, lmcoord.y);
-        vec3  reflCol = getSkyColor(refl, sunDirW, rainStrength, fogLin) * skyVis;
-        float spec    = pow(sat(dot(refl, lightDirW)), 180.0) * 2.0;
-        vec3  specular = lightCol * spec * gShadow * gSkyMask;
+            vec3 lightCol, ambientCol;
+            getLightColors(sunDirW.y, rainStrength, fogLin, lightCol, ambientCol);
+            float skyVis  = smoothstep(0.3, 0.9, lmcoord.y);
+            vec3  reflCol = getSkyColor(refl, sunDirW, rainStrength, fogLin) * skyVis;
+            float spec    = pow(sat(dot(refl, lightDirW)), 180.0) * 2.0;
+            vec3  specular = lightCol * spec * gShadow * gSkyMask;
 
-        if (isEyeInWater == 1) { fresnel *= 0.3; reflCol = lit; }
-        lit   = mix(lit, reflCol, fresnel) + specular;
-        alpha = mix(alpha, 1.0, fresnel);
+            if (isEyeInWater == 1) { fresnel *= 0.3; reflCol = lit; }
+            lit   = mix(lit, reflCol, fresnel) + specular;
+            alpha = mix(alpha, 1.0, fresnel);
+        }
 #endif
         color = vec4(lit, alpha);
         mask  = 1.0;
@@ -692,9 +697,15 @@ void main() {
 
     // sky pixels vanilla never covered (below the horizon, the Nether) get our sky
     if (depth >= 1.0 && skyM < 0.5) {
+#ifdef SKIP_SKY_PROC
+        // ultra-cheap: 2-color vertical gradient (Extra Potato mode)
+        float t = sat(gl_FragCoord.y / viewHeight);
+        color = mix(toLinear(fogColor) * 0.9, toLinear(fogColor) * 1.5, t);
+#else
         vec4 tmp = gbufferProjectionInverse * vec4(texcoord * 2.0 - 1.0, 1.0, 1.0);
         vec3 dir = normalize(mat3(gbufferModelViewInverse) * (tmp.xyz / tmp.w));
         color = getSkyColor(dir, sunDirW, rainStrength, toLinear(fogColor));
+#endif
         if (isEyeInWater == 1) color = mix(color, vec3(0.02, 0.16, 0.34) * 0.8, 0.85);
         if (isEyeInWater == 2) color = vec3(0.90, 0.25, 0.03);
     }
@@ -706,12 +717,17 @@ void main() {
 #endif
 
     color *= EXPOSURE;
-#if TONEMAP == 1
-    color = tonemapVivid(color);
-#elif TONEMAP == 2
-    color = tonemapACES(color);
-#else
+#ifdef SKIP_TONEMAP
+    // just clamp + gamma. Cheapest path (Extra Potato).
     color = sat(color);
+#else
+    #if TONEMAP == 1
+        color = tonemapVivid(color);
+    #elif TONEMAP == 2
+        color = tonemapACES(color);
+    #else
+        color = sat(color);
+    #endif
 #endif
     color = toSRGB(color);
 
@@ -729,7 +745,9 @@ void main() {
     color = mix(color, color * vec3(1.12, 1.04, 0.88), sat(COLOR_TEMP));
     color = mix(color, color * vec3(0.88, 0.96, 1.15), sat(-COLOR_TEMP));
 
+#ifndef SKIP_DITHERING
     color += (hash12(gl_FragCoord.xy) - 0.5) / 255.0;
+#endif
     gl_FragColor = vec4(sat(color), 1.0);
 }
 #endif

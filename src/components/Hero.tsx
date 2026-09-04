@@ -47,9 +47,9 @@ function BeforeAfter() {
 
 interface Stat { icon: typeof Gauge; value: number; label: string; suffix?: string; prefix?: string; decimals?: number; textValue?: string; }
 const STATS: Stat[] = [
-  { icon: Gauge, value: 25, prefix: '5–', suffix: '%', label: 'chi phí FPS thay vì 60–75% BSL' },
+  { icon: Gauge, value: 2, prefix: '', suffix: '–25%', label: 'chi phí FPS thay vì 60–75% BSL' },
   { icon: Cpu, value: 0, textValue: 'Intel HD', label: 'chạy được đồ họa tích hợp cũ' },
-  { icon: Package, value: 60, suffix: ' KB', label: 'file .zip tạo trên trình duyệt' },
+  { icon: Package, value: 8, suffix: ' preset', label: 'từ Extra Potato đến Extra High' },
   { icon: Sparkles, value: 26.2, decimals: 1, label: 'Minecraft + Iris 1.11 (Fabric)' },
 ];
 
@@ -65,13 +65,18 @@ export default function Hero() {
 
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
         <div>
-          <span className="inline-flex animate-fade-up items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-200">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex animate-fade-up items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-200">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              </span>
+              Minecraft 26.2 · Iris + Sodium
             </span>
-            Minecraft 26.2 · Iris + Sodium
-          </span>
+            <span className="inline-flex animate-fade-up items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200 [animation-delay:100ms]">
+              <span>🎉</span> v1.0.1 · 7 preset · Extra Potato
+            </span>
+          </div>
           <h1 className="animate-fade-up mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl [animation-delay:80ms]">
             Đẹp như <span className="text-gradient">BSL</span>,
             <br />nhẹ như <span className="relative inline-block">Vanilla<span className="absolute -bottom-1 left-0 h-1 w-full origin-left animate-[bar_1.2s_cubic-bezier(0.16,1,0.3,1)_0.9s_both] rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400" /></span>.

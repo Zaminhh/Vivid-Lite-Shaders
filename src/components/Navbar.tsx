@@ -19,7 +19,7 @@ export function Logo({ className }: { className?: string }) {
       </span>
       <span className="leading-tight">
         <span className="block text-base font-extrabold tracking-tight text-white">Vivid Lite</span>
-        <span className="block font-pixel text-[8px] text-amber-300/90">SHADERS · 26.2</span>
+        <span className="block font-pixel text-[8px] text-amber-300/90">v1.0.1 · MC 26.2</span>
       </span>
     </a>
   );

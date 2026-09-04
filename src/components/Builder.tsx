@@ -57,19 +57,20 @@ function Slider({ label, value, values, onChange, format, disabled, hint }: { la
   );
 }
 
-type TabId = 'shadows' | 'lighting' | 'world' | 'post';
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'shadows', label: 'Bóng đổ' },
-  { id: 'lighting', label: 'Ánh sáng' },
-  { id: 'world', label: 'Thế giới' },
-  { id: 'post', label: 'Màu sắc' },
+type TabId = 'shadows' | 'lighting' | 'world' | 'post' | 'perf';
+const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: 'shadows', label: 'Bóng đổ', icon: '🌗' },
+  { id: 'lighting', label: 'Ánh sáng', icon: '💡' },
+  { id: 'world', label: 'Thế giới', icon: '🌍' },
+  { id: 'post', label: 'Màu sắc', icon: '🎨' },
+  { id: 'perf', label: 'Hiệu năng', icon: '⚡' },
 ];
 
 const f2 = (v: number) => v.toFixed(2);
 const fPct = (v: number) => `${Math.round(v * 100)}%`;
 
 export default function Builder() {
-  const [s, setS] = useState<ShaderSettings>(PRESETS.low);
+  const [s, setS] = useState<ShaderSettings>(PRESETS.medium);
   const [scene, setScene] = useState<'day' | 'night'>('day');
   const [busy, setBusy] = useState(false);
   const [dl, setDl] = useState<{ name: string; bytes: number } | null>(null);
@@ -157,6 +158,22 @@ export default function Builder() {
         <Slider label="Độ tối góc" value={s.vignetteStrength} values={OPTION_VALUES.vignetteStrength} onChange={(v) => set('vignetteStrength', v)} format={f2} disabled={!s.vignette} />
       </div>
     ),
+    perf: (
+      <div>
+        <div className="mb-4 rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3 text-xs text-emerald-100/90">
+          <strong className="text-emerald-200">⚡ Menu tối ưu mới (v1.0.1).</strong> Các tùy chọn ở đây bỏ hoặc thay các bước xử lý bằng phiên bản rẻ hơn. Preset <em>Extra Potato</em> bật toàn bộ.
+        </div>
+        <div className="divide-y divide-white/5">
+          <Toggle label="Bỏ sky procedural" hint="Dùng gradient 2 màu đơn giản → tiết kiệm ~5-8% GPU. Bầu trời phẳng hơn." checked={s.skipSky} onChange={(v) => set('skipSky', v)} />
+          <Toggle label="Bỏ tonemap curve" hint="Chỉ dùng gamma. Rẻ hơn nhưng cháy sáng dễ." checked={s.skipTonemap} onChange={(v) => set('skipTonemap', v)} />
+          <Toggle label="Bỏ dithering" hint="Bỏ 1 hash noise/pixel. Có thể thấy dải màu ở bầu trời." checked={s.skipDithering} onChange={(v) => set('skipDithering', v)} />
+          <Toggle label="Nước đơn giản (phẳng)" hint="Bỏ sóng + phản chiếu + Fresnel. Tiết kiệm ~3-5% với cảnh nhiều nước." checked={s.simpleWater} onChange={(v) => set('simpleWater', v)} />
+          <Toggle label="Bóng nửa độ phân giải" hint="Sample bóng ở ½ res grid → 4× nhanh hơn cache." checked={s.lowResShadow} onChange={(v) => set('lowResShadow', v)} disabled={!s.shadows} />
+          <Slider label="Tầm cắt hiệu ứng đắt" hint="Nước phản chiếu/sóng bị tắt ngoài khoảng này." value={s.cullDistance} values={OPTION_VALUES.cullDistance} onChange={(v) => set('cullDistance', v)} format={(v) => v >= 999 ? 'Không cắt' : `${v} block`} />
+          <Choice label="Chất lượng sương" value={s.fogQuality} options={[{ value: 0 as const, label: 'Tắt (rẻ nhất)' }, { value: 1 as const, label: 'Rẻ (linear)' }, { value: 2 as const, label: 'Đầy đủ' }]} onChange={(v) => set('fogQuality', v)} />
+        </div>
+      </div>
+    ),
   };
 
   const colors = ['bg-sky-500', 'bg-amber-400', 'bg-rose-400', 'bg-violet-400', 'bg-emerald-400', 'bg-teal-400', 'bg-pink-400'];
@@ -170,35 +187,56 @@ export default function Builder() {
           <p className="mt-4 text-slate-400">Chọn preset rồi tinh chỉnh. File .zip tạo ngay trên trình duyệt — mọi tùy chọn vẫn chỉnh trong game được.</p>
         </Reveal>
 
-        {/* presets */}
-        <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {(Object.keys(PRESETS) as PresetId[]).map((id, i) => {
-            const m = PRESET_META[id]; const active = preset === id;
+        {/* preset grid — 8 tùy chọn chia 3 nhóm */}
+        <div className="mt-10 space-y-6">
+          {(['potato', 'balanced', 'high'] as const).map((tier, tierIdx) => {
+            const tierIds = (Object.keys(PRESETS) as PresetId[]).filter((id) => PRESET_META[id].tier === tier);
+            const tierMeta = {
+              potato: { label: '🥔 Máy siêu yếu → yếu', accent: 'text-emerald-300', border: 'border-emerald-400/20' },
+              balanced: { label: '⚖️ Máy phổ thông', accent: 'text-amber-300', border: 'border-amber-400/20' },
+              high: { label: '✨ Máy khỏe', accent: 'text-violet-300', border: 'border-violet-400/20' },
+            }[tier];
             return (
-              <Reveal key={id} delay={i * 80} variant="scale">
-                <button type="button" onClick={() => applyPreset(id)}
-                  className={cn('hover-lift relative w-full h-full rounded-2xl border p-5 text-left transition-all duration-300',
-                    active ? 'border-amber-400/60 bg-amber-400/10 scale-[1.02]' : 'glass hover:bg-white/[0.05]')}>
-                  {active && (
-                    <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-amber-400 text-night-950 animate-tick">
-                      <Check className="h-3 w-3" />
-                    </span>
-                  )}
-                  <span className={cn('inline-block text-2xl transition-transform duration-300', active && 'scale-110')}>{m.emoji}</span>
-                  <span className="mt-2 block text-lg font-bold text-white">{m.name}</span>
-                  <span className="mt-1 block text-xs text-slate-400">{m.tagline}</span>
-                  <span className="mt-2 block text-[11px] text-amber-200/80">{m.target}</span>
-                  <span className="mt-1 block font-mono text-[10px] text-emerald-300">{m.fpsNote}</span>
-                </button>
-              </Reveal>
+              <div key={tier}>
+                <div className={cn('mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest', tierMeta.accent)}>
+                  <span>{tierMeta.label}</span>
+                  <span className={cn('h-px flex-1 border-t', tierMeta.border)} />
+                  <span className="font-mono text-[10px] normal-case tracking-normal text-slate-500">{tierIds.length} preset</span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {tierIds.map((id, i) => {
+                    const m = PRESET_META[id]; const active = preset === id;
+                    return (
+                      <Reveal key={id} delay={tierIdx * 100 + i * 60} variant="scale">
+                        <button type="button" onClick={() => applyPreset(id)}
+                          className={cn('hover-lift relative w-full h-full rounded-2xl border p-4 text-left transition-all duration-300',
+                            active ? 'border-amber-400/60 bg-amber-400/10 scale-[1.02]' : 'glass hover:bg-white/[0.05]')}>
+                          {active && (
+                            <span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-full bg-amber-400 text-night-950 animate-tick">
+                              <Check className="h-3 w-3" />
+                            </span>
+                          )}
+                          <span className={cn('inline-block text-2xl transition-transform duration-300', active && 'scale-110 rotate-6')}>{m.emoji}</span>
+                          <span className="mt-1.5 block text-base font-bold text-white leading-tight">{m.name}</span>
+                          <span className="mt-1 block text-[11px] leading-snug text-slate-400">{m.tagline}</span>
+                          <span className="mt-2 block text-[10px] text-amber-200/80 leading-tight">{m.target}</span>
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-emerald-400/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300">
+                            <span className="h-1 w-1 rounded-full bg-emerald-400" />{m.fpsNote}
+                          </span>
+                        </button>
+                      </Reveal>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </div>
         {preset === 'custom' && (
           <div className="mt-3 flex items-center gap-3 text-xs text-slate-400">
             <span className="rounded-full border border-sky-400/30 bg-sky-400/10 px-2 py-0.5 font-semibold text-sky-200">Tùy chỉnh</span>
-            <button type="button" onClick={() => applyPreset('low')} className="inline-flex items-center gap-1 text-slate-300 underline-offset-2 hover:underline">
-              <RotateCcw className="h-3 w-3" /> Về preset Thấp
+            <button type="button" onClick={() => applyPreset('medium')} className="inline-flex items-center gap-1 text-slate-300 underline-offset-2 hover:underline">
+              <RotateCcw className="h-3 w-3" /> Về preset Medium
             </button>
           </div>
         )}
@@ -210,9 +248,11 @@ export default function Builder() {
               <div className="flex border-b border-white/8">
                 {TABS.map((t) => (
                   <button key={t.id} type="button" onClick={() => setTab(t.id)}
-                    className={cn('flex-1 px-3 py-3 text-sm font-semibold transition-colors border-b-2',
-                      tab === t.id ? 'border-amber-400 text-white' : 'border-transparent text-slate-400 hover:text-slate-200')}>
-                    {t.label}
+                    className={cn('flex-1 flex items-center justify-center gap-1.5 px-2 py-3 text-xs sm:text-sm font-semibold transition-colors border-b-2',
+                      tab === t.id ? 'border-amber-400 text-white' : 'border-transparent text-slate-400 hover:text-slate-200',
+                      t.id === 'perf' && tab !== t.id && 'text-emerald-300/70 hover:text-emerald-300')}>
+                    <span>{t.icon}</span>
+                    <span className="hidden sm:inline">{t.label}</span>
                   </button>
                 ))}
               </div>
@@ -282,6 +322,22 @@ export default function Builder() {
                   <span className="font-mono text-amber-200">+{cost.total.toFixed(1)}%</span>
                 </li>
               </ul>
+              {cost.savings.length > 0 && (
+                <div className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-2.5">
+                  <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                    <span>⚡ Đang tiết kiệm</span>
+                    <span className="font-mono">-{cost.savings.reduce((a, p) => a + p.cost, 0).toFixed(1)}%</span>
+                  </div>
+                  <ul className="space-y-0.5">
+                    {cost.savings.map((sv) => (
+                      <li key={sv.key} className="flex items-center justify-between text-[11px]" title={sv.tip}>
+                        <span className="text-emerald-200/90">✓ {sv.label}</span>
+                        <span className="font-mono text-emerald-400">-{sv.cost.toFixed(1)}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="mt-3 overflow-hidden rounded-lg border border-white/8">
                 <table className="w-full text-[11px]">
                   <thead className="bg-white/5 text-[9px] uppercase tracking-wider text-slate-500">

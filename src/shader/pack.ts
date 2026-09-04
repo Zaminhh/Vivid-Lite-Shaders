@@ -7,6 +7,8 @@ import {
   LANG_VI,
   PRESET_META,
   buildReadme,
+  buildReadmeGithub,
+  buildChangelog,
   buildSettingsGlsl,
   buildShadersProperties,
   buildStubFiles,
@@ -14,7 +16,7 @@ import {
   type ShaderSettings,
 } from './settings';
 
-export const PACK_VERSION = '1.0.0';
+export const PACK_VERSION = '1.0.1';
 
 export function presetLabel(s: ShaderSettings): string {
   const id = detectPreset(s);
@@ -26,6 +28,8 @@ export function buildPackFiles(s: ShaderSettings): Record<string, string> {
   const label = presetLabel(s);
   const files: Record<string, string> = {
     'README.txt': buildReadme(label),
+    'README.md': buildReadmeGithub(),
+    'CHANGELOG.txt': buildChangelog(),
     'shaders/shaders.properties': buildShadersProperties(s, label),
     'shaders/block.properties': BLOCK_PROPERTIES,
     'shaders/lang/en_us.lang': LANG_EN,
@@ -40,7 +44,9 @@ export function buildPackFiles(s: ShaderSettings): Record<string, string> {
 
 export function packFileName(s: ShaderSettings): string {
   const id = detectPreset(s);
-  const suffix = id === 'custom' ? 'Custom' : id.charAt(0).toUpperCase() + id.slice(1);
+  if (id === 'custom') return `VividLite_v${PACK_VERSION}_Custom.zip`;
+  // camelCase → PascalCase (e.g. extraPotato → ExtraPotato)
+  const suffix = id.charAt(0).toUpperCase() + id.slice(1);
   return `VividLite_v${PACK_VERSION}_${suffix}.zip`;
 }
 

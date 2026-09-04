@@ -215,6 +215,12 @@ vec3 getShadow(vec3 feetPos, vec3 offsetDir, float NdotL) {
     sp = sp * 0.5 + 0.5;
     sp.z -= 0.00004;
 
+#ifdef LOW_RES_SHADOW
+    // snap to half-resolution grid → 4× fewer unique texture cache lines
+    float halfRes = float(shadowMapResolution) * 0.5;
+    sp.xy = floor(sp.xy * halfRes + 0.5) / halfRes;
+#endif
+
     vec3 result;
 #if SHADOW_SOFTNESS == 0
     result = sampleShadow(sp);
@@ -320,6 +326,11 @@ vec3 getLighting(vec3 albedo, vec3 normal, vec2 lm, vec3 feetPos, float foliage,
 
 export const LIB_FOG = `// lib/fog.glsl — forward fog (no extra pass needed)
 vec3 applyFog(vec3 color, vec3 feetPos, vec3 sunDirW, float rain, vec3 fogLin, float eyeSky) {
+#if FOG_QUALITY == 0
+    // fog disabled entirely — huge win on iGPU (no length(), no exp(), no getSkyColor)
+    if (isEyeInWater == 1) return mix(color, vec3(0.02, 0.16, 0.34) * 0.5, sat(length(feetPos) * 0.08));
+    return color;
+#endif
     float dist = length(feetPos);
     vec3  dir  = feetPos / max(dist, 0.001);
 #ifdef NETHER
@@ -343,8 +354,14 @@ vec3 applyFog(vec3 color, vec3 feetPos, vec3 sunDirW, float rain, vec3 fogLin, f
     float edge = smoothstep(far * 0.62, far * 0.98, dist);
     float fog  = 1.0 - (1.0 - haze) * (1.0 - edge);
 
+#if FOG_QUALITY == 1
+    // cheap linear fog with plain fogColor (no sky lookup) — Potato tier
+    vec3 fogCol = toLinear(fogColor) * mix(0.5, 1.0, eyeSky);
+#else
+    // full atmospheric fog: sky color at the fog direction
     vec3 fogDir = normalize(vec3(dir.x, max(dir.y, 0.0) * 0.25 + 0.02, dir.z));
     vec3 fogCol = getSkyColor(fogDir, sunDirW, rain, fogLin) * mix(0.06, 1.0, eyeSky);
+#endif
 
     fog    = max(fog, blindness * smoothstep(0.0, 6.0, dist));
     fogCol = mix(fogCol, vec3(0.0), blindness);
