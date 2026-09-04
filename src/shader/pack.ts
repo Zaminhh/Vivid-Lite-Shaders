@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import { LIB_FILES } from './glsl-lib';
 import { PROGRAM_FILES } from './glsl-programs';
 import {
-  BLOCK_PROPERTIES,
+  buildBlockProperties,
   LANG_EN,
   LANG_VI,
   PRESET_META,
@@ -16,7 +16,7 @@ import {
   type ShaderSettings,
 } from './settings';
 
-export const PACK_VERSION = '1.0.1';
+export const PACK_VERSION = '1.1.0';
 
 export function presetLabel(s: ShaderSettings): string {
   const id = detectPreset(s);
@@ -27,11 +27,11 @@ export function presetLabel(s: ShaderSettings): string {
 export function buildPackFiles(s: ShaderSettings): Record<string, string> {
   const label = presetLabel(s);
   const files: Record<string, string> = {
-    'README.txt': buildReadme(label),
+    'README.txt': buildReadme(label, s),
     'README.md': buildReadmeGithub(),
     'CHANGELOG.txt': buildChangelog(),
     'shaders/shaders.properties': buildShadersProperties(s, label),
-    'shaders/block.properties': BLOCK_PROPERTIES,
+    'shaders/block.properties': buildBlockProperties(s.mcVersion),
     'shaders/lang/en_us.lang': LANG_EN,
     'shaders/lang/vi_vn.lang': LANG_VI,
     'shaders/lib/settings.glsl': buildSettingsGlsl(s, label),

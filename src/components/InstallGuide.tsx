@@ -4,15 +4,15 @@ import Reveal from './ui/Reveal';
 const STEPS = [
   {
     icon: Layers,
-    title: 'Cài Fabric Loader cho Minecraft 26.2',
-    body: 'Tải installer tại fabricmc.net, chọn phiên bản 26.2, bấm Install. Launcher sẽ có thêm profile "fabric-loader-26.2".',
+    title: 'Chọn Iris hoặc OptiFine',
+    body: 'Iris + Sodium (Fabric) cho FPS cao nhất — khuyên dùng. Nếu chơi version rất cũ hoặc cần OptiFine, chọn chế độ "OptiFine" ở phần Tùy chỉnh. Vivid Lite hỗ trợ cả hai, Minecraft 1.8 → 26.3.',
     link: { href: 'https://fabricmc.net/use/installer/', label: 'fabricmc.net' },
   },
   {
     icon: Wrench,
-    title: 'Tải Sodium + Iris (bản 26.2)',
-    body: 'Tải 2 file .jar từ Modrinth và bỏ vào thư mục .minecraft/mods. Iris 1.11.x là bản hỗ trợ 26.2. Sodium là thứ tăng FPS nhiều nhất cho máy yếu — bắt buộc có.',
-    link: { href: 'https://modrinth.com/mod/iris/versions?g=26.2', label: 'Iris trên Modrinth' },
+    title: 'Cài mod / OptiFine đúng version',
+    body: 'Iris: tải Sodium + Iris (.jar) từ Modrinth bỏ vào .minecraft/mods. OptiFine: tải HD U đúng version tại optifine.net rồi chạy installer.',
+    link: { href: 'https://modrinth.com/mod/iris/versions', label: 'Iris trên Modrinth' },
   },
   {
     icon: FolderInput,
@@ -22,7 +22,7 @@ const STEPS = [
   {
     icon: Gamepad2,
     title: 'Bật trong game',
-    body: 'Options → Video Settings → Shader Packs… → chọn "VividLite_v1.0.1_….zip" → Apply. Bấm "Shader Pack Settings" để đổi 1 trong 8 profile hoặc tinh chỉnh 50+ tùy chọn.',
+    body: 'Iris: Options → Video Settings → Shader Packs… OptiFine: Options → Video Settings → Shaders… Chọn "VividLite_v1.1.0_….zip" → Apply. Bấm "Shader Pack Settings" để đổi 1 trong 8 profile hoặc tinh chỉnh 60+ tùy chọn (có menu 🌙 Ban đêm và ⚡ Hiệu năng).',
   },
 ];
 
@@ -55,7 +55,7 @@ export default function InstallGuide() {
         <Reveal className="max-w-2xl">
           <p className="text-sm font-semibold uppercase tracking-widest text-amber-300">Cài đặt</p>
           <h2 className="section-title mt-2">4 bước, 5 phút</h2>
-          <p className="mt-4 text-slate-400">Vivid Lite được thiết kế cho Iris + Sodium trên Fabric — combo nhẹ nhất hiện có cho Minecraft 26.2.</p>
+          <p className="mt-4 text-slate-400">Chạy trên <strong className="text-white">Iris + Sodium</strong> (nhanh nhất) hoặc <strong className="text-white">OptiFine</strong>, từ Minecraft 1.8 đến 26.3.</p>
         </Reveal>
 
         <ol className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">

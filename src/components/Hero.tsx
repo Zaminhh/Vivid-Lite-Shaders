@@ -50,7 +50,7 @@ const STATS: Stat[] = [
   { icon: Gauge, value: 2, prefix: '', suffix: '–25%', label: 'chi phí FPS thay vì 60–75% BSL' },
   { icon: Cpu, value: 0, textValue: 'Intel HD', label: 'chạy được đồ họa tích hợp cũ' },
   { icon: Package, value: 8, suffix: ' preset', label: 'từ Extra Potato đến Extra High' },
-  { icon: Sparkles, value: 26.2, decimals: 1, label: 'Minecraft + Iris 1.11 (Fabric)' },
+  { icon: Sparkles, value: 0, textValue: '1.8→26.3', label: 'Iris và OptiFine đều chạy' },
 ];
 
 const TAGS = ['Bóng đổ mềm', 'Bloom nhẹ', 'Nước phản chiếu', 'Hoàng hôn BSL', 'Cỏ lá đung đưa', 'Tonemap sống động', 'Đêm xanh dịu', 'Đuốc ấm lung linh', 'Sương khí quyển', 'Sao đêm lấp lánh'];
@@ -71,10 +71,10 @@ export default function Hero() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
               </span>
-              Minecraft 26.2 · Iris + Sodium
+              Minecraft 1.8 → 26.3 · Iris + OptiFine
             </span>
-            <span className="inline-flex animate-fade-up items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200 [animation-delay:100ms]">
-              <span>🎉</span> v1.0.1 · 7 preset · Extra Potato
+            <span className="inline-flex animate-fade-up items-center gap-1.5 rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1 text-xs font-semibold text-indigo-200 [animation-delay:100ms]">
+              <span>🌙</span> v1.1.0 · Ban đêm mới · 8 preset
             </span>
           </div>
           <h1 className="animate-fade-up mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl [animation-delay:80ms]">

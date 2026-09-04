@@ -2,6 +2,8 @@
 //  Vivid Lite — extended settings model, presets and generated pack files
 // ============================================================================
 
+import { VERSION_TARGETS, buildBlockProperties, buildBufferFormats, type LoaderId, type VersionTargetId } from './compat';
+
 export type PresetId = 'extraPotato' | 'lowPotato' | 'highPotato' | 'potato' | 'low' | 'medium' | 'high' | 'extraHigh';
 
 export interface ShaderSettings {
@@ -60,6 +62,17 @@ export interface ShaderSettings {
   cullDistance: number;     // hard cutoff distance for expensive per-pixel effects (block-based)
   lowResShadow: boolean;    // render shadow at 1/2 map res sampling (blockier but 4× faster reads)
   fogQuality: 0 | 1 | 2;   // 0 = off, 1 = cheap linear, 2 = full atmospheric
+  // ── night rework (v1.1.0) ──
+  nightBrightness: number;   // overall night exposure
+  moonlight: number;         // moon directional light strength
+  nightTint: 0 | 1 | 2;     // 0 = blue (BSL), 1 = teal, 2 = purple
+  starBrightness: number;
+  milkyWay: boolean;         // faint galactic band
+  moonGlow: boolean;         // soft halo around the moon
+  nightFog: number;          // bluish distance haze at night
+  // ── compatibility (v1.1.0) ──
+  mcVersion: VersionTargetId;
+  loader: LoaderId;
 }
 
 export const OPTION_VALUES = {
@@ -81,6 +94,10 @@ export const OPTION_VALUES = {
   vignetteStrength: [0.25, 0.5, 0.75, 1.0],
   colorTemp: [-1, -0.5, 0, 0.5, 1],
   cullDistance: [32, 48, 64, 96, 128, 160, 200, 999],
+  nightBrightness: [0.4, 0.6, 0.8, 1.0, 1.2, 1.5, 2.0],
+  moonlight: [0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0],
+  starBrightness: [0, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0],
+  nightFog: [0, 0.5, 1.0, 1.5, 2.0],
 } as const;
 
 const BASE: ShaderSettings = {
@@ -98,6 +115,9 @@ const BASE: ShaderSettings = {
   vignette: true, vignetteStrength: 0.5, colorTemp: 0,
   skipSky: false, skipTonemap: false, skipDithering: false,
   simpleWater: false, cullDistance: 999, lowResShadow: false, fogQuality: 2,
+  nightBrightness: 1.0, moonlight: 1.0, nightTint: 0, starBrightness: 1.0,
+  milkyWay: true, moonGlow: true, nightFog: 1.0,
+  mcVersion: 'latest', loader: 'both',
 };
 
 export const PRESETS: Record<PresetId, ShaderSettings> = {
@@ -116,6 +136,7 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     // v1.0.1 hard-off toggles
     skipSky: true, skipTonemap: true, skipDithering: true,
     simpleWater: true, cullDistance: 32, lowResShadow: true, fogQuality: 0,
+    moonlight: 0.5, starBrightness: 0, milkyWay: false, moonGlow: false, nightFog: 0,
   },
   // ── LOW POTATO ─ tiny step up: keep tonemap + waving plants ──
   lowPotato: {
@@ -129,6 +150,7 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     bloom: false, vignette: false, vibrance: 0.1,
     skipSky: false, skipTonemap: false, skipDithering: true,
     simpleWater: true, cullDistance: 48, lowResShadow: false, fogQuality: 1,
+    moonlight: 0.75, starBrightness: 0.5, milkyWay: false, moonGlow: false, nightFog: 0.5,
   },
   // ── POTATO ─ original potato preset, slightly better than lowPotato ──
   potato: {
@@ -139,6 +161,7 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     bloom: false, vignette: false, ao: false, torchFlicker: false,
     cloudTranslucency: false, sunsetIntensity: 0.7,
     simpleWater: false, cullDistance: 64, fogQuality: 1,
+    starBrightness: 0.75, milkyWay: false, moonGlow: false, nightFog: 0.5,
   },
   // ── HIGH POTATO ─ potato + very cheap shadows (768/48, hard, no entity) ──
   highPotato: {
@@ -149,6 +172,7 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     bloom: false, vignette: false, torchFlicker: false,
     cloudTranslucency: false, sunsetIntensity: 0.8,
     cullDistance: 96, fogQuality: 1,
+    milkyWay: false, nightFog: 0.75,
   },
   // ── LOW ─ shadows + bloom, still light ──
   low: {
@@ -177,6 +201,8 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     cloudTranslucency: true, sunsetIntensity: 1.5, rainFog: 2.0,
     bloomStrength: 0.2, saturation: 1.15, vibrance: 0.3, contrast: 1.1,
     vignetteStrength: 0.75,
+    nightBrightness: 1.1, moonlight: 1.5, starBrightness: 1.5,
+    milkyWay: true, moonGlow: true, nightFog: 1.5,
   },
 };
 
@@ -247,24 +273,38 @@ const f1 = (v: number) => v.toFixed(1);
 const list = (vals: readonly number[], fmt: (v: number) => string) => `//[${vals.map(fmt).join(' ')}]`;
 const flag = (name: string, on: boolean) => `${on ? '' : '//'}#define ${name}`;
 
+/** Keys that are orthogonal to the visual preset (compat targets). */
+const NON_PRESET_KEYS: (keyof ShaderSettings)[] = ['mcVersion', 'loader'];
+
 export function detectPreset(s: ShaderSettings): PresetId | 'custom' {
   for (const id of Object.keys(PRESETS) as PresetId[]) {
     const p = PRESETS[id];
-    if ((Object.keys(p) as (keyof ShaderSettings)[]).every((k) => p[k] === s[k])) return id;
+    const keys = (Object.keys(p) as (keyof ShaderSettings)[]).filter((k) => !NON_PRESET_KEYS.includes(k));
+    if (keys.every((k) => p[k] === s[k])) return id;
   }
   return 'custom';
+}
+
+/** Apply a preset but keep the user's version/loader choice. */
+export function applyPresetKeepCompat(preset: ShaderSettings, current: ShaderSettings): ShaderSettings {
+  return { ...preset, mcVersion: current.mcVersion, loader: current.loader };
 }
 
 // ---------------------------------------------------------------------------
 // shaders/lib/settings.glsl
 // ---------------------------------------------------------------------------
 export function buildSettingsGlsl(s: ShaderSettings, presetLabel: string): string {
+  const vt = VERSION_TARGETS[s.mcVersion];
   return `// ============================================================================
-//  Vivid Lite Shaders — lib/settings.glsl
-//  Generated by the Vivid Lite web builder — preset: ${presetLabel}
+//  Vivid Lite Shaders v1.1.0 — lib/settings.glsl
+//  Preset: ${presetLabel}  |  Target: Minecraft ${vt.label}  |  Loader: ${s.loader}
 //  Every option below can be changed in game:
 //  Options > Video Settings > Shader Packs > Shader Pack Settings
 // ============================================================================
+
+// ---------------- COMPATIBILITY ----------------
+${vt.legacyShadow ? '#define LEGACY_SHADOW   // manual depth compare (old OptiFine / old GPUs)' : '//#define LEGACY_SHADOW'}
+${vt.legacyBuffers ? '#define LEGACY_BUFFERS' : '//#define LEGACY_BUFFERS'}
 
 // ---------------- SHADOWS ----------------
 ${flag('SHADOWS', s.shadows)}
@@ -274,7 +314,7 @@ const float shadowDistance = ${f1(s.shadowDistance)}; ${list(OPTION_VALUES.shado
 ${flag('COLORED_SHADOWS', s.coloredShadows)}
 const float sunPathRotation = ${f1(s.sunPathRotation)}; ${list(OPTION_VALUES.sunPathRotation, f1)}
 const float shadowDistanceRenderMul = 1.0;
-const bool  shadowHardwareFiltering = true;
+const bool  shadowHardwareFiltering = ${vt.legacyShadow ? 'false' : 'true'};
 const float shadowIntervalSize = 2.0;
 #define SHADOW_DISTORT 0.85
 
@@ -308,6 +348,15 @@ ${flag('STARS', s.stars)}
 #define SUNSET_INTENSITY ${f2(s.sunsetIntensity)} ${list(OPTION_VALUES.sunsetIntensity, f2)}
 ${flag('CLOUD_TRANSLUCENCY', s.cloudTranslucency)}
 
+// ---------------- NIGHT (v1.1.0 rework) ----------------
+#define NIGHT_BRIGHTNESS ${f2(s.nightBrightness)} ${list(OPTION_VALUES.nightBrightness, f2)}
+#define MOONLIGHT ${f2(s.moonlight)} ${list(OPTION_VALUES.moonlight, f2)}
+#define NIGHT_TINT ${s.nightTint} //[0 1 2]
+#define STAR_BRIGHTNESS ${f2(s.starBrightness)} ${list(OPTION_VALUES.starBrightness, f2)}
+${flag('MILKY_WAY', s.milkyWay)}
+${flag('MOON_GLOW', s.moonGlow)}
+#define NIGHT_FOG ${f2(s.nightFog)} ${list(OPTION_VALUES.nightFog, f2)}
+
 // ---------------- COLOR & POST ----------------
 ${flag('BLOOM', s.bloom)}
 #define BLOOM_STRENGTH ${f2(s.bloomStrength)} ${list(OPTION_VALUES.bloomStrength, f2)}
@@ -331,11 +380,7 @@ ${flag('LOW_RES_SHADOW', s.lowResShadow)}
 #define FOG_QUALITY ${s.fogQuality} //[0 1 2]
 
 // ---------------- BUFFERS (do not edit) ----------------
-/*
-const int colortex0Format = R11F_G11F_B10F;
-const int colortex1Format = R11F_G11F_B10F;
-const int colortex2Format = RGBA8;
-*/
+${buildBufferFormats(s.mcVersion)}
 const float eyeBrightnessHalflife = 6.0;
 
 #if defined NETHER || defined END
@@ -349,8 +394,28 @@ const float eyeBrightnessHalflife = 6.0;
 // shaders/shaders.properties
 // ---------------------------------------------------------------------------
 export function buildShadersProperties(s: ShaderSettings, presetLabel: string): string {
-  return `# Vivid Lite Shaders — shaders.properties (generated preset: ${presetLabel})
-version.1.0.0
+  const vt = VERSION_TARGETS[s.mcVersion];
+  const irisOK = s.loader !== 'optifine';
+  // Iris-only directives — OptiFine ignores unknown keys, but pure-OptiFine builds omit them.
+  const irisBlock = irisOK
+    ? `# ── Iris-only: skip whole programs when their feature is off (big FPS win) ──
+program.composite.enabled=WATER_FOG
+program.composite1.enabled=BLOOM
+program.world1/composite.enabled=WATER_FOG
+program.world1/composite1.enabled=BLOOM
+program.world-1/composite1.enabled=BLOOM
+shadow.enabled=SHADOWS
+`
+    : `# (Iris-only program toggles omitted for OptiFine build — unused passes still
+#  cost almost nothing because their bodies are #ifdef'd out.)
+`;
+
+  return `# ============================================================
+#  Vivid Lite Shaders v1.1.0 — shaders.properties
+#  Preset: ${presetLabel}
+#  Target: Minecraft ${vt.label}   Loader: ${s.loader}
+# ============================================================
+version.1.1.0
 
 sun=${s.roundSun ? 'false' : 'true'}
 moon=true
@@ -366,43 +431,33 @@ shadowEntities=${s.entityShadows ? 'true' : 'false'}
 shadowPlayer=${s.entityShadows ? 'true' : 'false'}
 shadowBlockEntities=${s.entityShadows ? 'true' : 'false'}
 
-program.composite.enabled=WATER_FOG
-program.composite1.enabled=BLOOM
-program.world1/composite.enabled=WATER_FOG
-program.world1/composite1.enabled=BLOOM
-program.world-1/composite1.enabled=BLOOM
-
-profile.EXTRA_POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=32.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG !WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION !WATER_WAVES !HAND_LIGHT !EMISSIVE_BLOCKS !NIGHT_DESATURATION !ROUND_SUN !STARS SKIP_SKY_PROC SKIP_TONEMAP SKIP_DITHERING SIMPLE_WATER LOW_RES_SHADOW CULL_DISTANCE=32.0 FOG_QUALITY=0 TONEMAP=0
-profile.LOW_POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=32.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION !WATER_WAVES !EMISSIVE_BLOCKS !NIGHT_DESATURATION !ROUND_SUN !STARS SKIP_DITHERING SIMPLE_WATER CULL_DISTANCE=48.0 FOG_QUALITY=1
+${irisBlock}
+profile.EXTRA_POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=32.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG !WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION !WATER_WAVES !HAND_LIGHT !EMISSIVE_BLOCKS !NIGHT_DESATURATION !ROUND_SUN !STARS !MILKY_WAY !MOON_GLOW SKIP_SKY_PROC SKIP_TONEMAP SKIP_DITHERING SIMPLE_WATER LOW_RES_SHADOW CULL_DISTANCE=32.0 FOG_QUALITY=0 TONEMAP=0 MOONLIGHT=0.50 STAR_BRIGHTNESS=0.00 NIGHT_FOG=0.00
+profile.LOW_POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=32.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION !WATER_WAVES !EMISSIVE_BLOCKS !NIGHT_DESATURATION !ROUND_SUN !STARS !MILKY_WAY !MOON_GLOW SKIP_DITHERING SIMPLE_WATER CULL_DISTANCE=48.0 FOG_QUALITY=1 MOONLIGHT=0.75 STAR_BRIGHTNESS=0.50 NIGHT_FOG=0.50
 profile.POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=48.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION CULL_DISTANCE=64.0 FOG_QUALITY=1
 profile.HIGH_POTATO=SHADOWS shadowMapResolution=512 shadowDistance=48.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !TORCH_FLICKER !WATER_REFLECTION LOW_RES_SHADOW CULL_DISTANCE=96.0 FOG_QUALITY=1
 profile.LOW=SHADOWS shadowMapResolution=768 shadowDistance=64.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES VIGNETTE CULL_DISTANCE=128.0 FOG_QUALITY=2
 profile.MEDIUM=SHADOWS shadowMapResolution=1024 shadowDistance=96.0 SHADOW_SOFTNESS=1 !COLORED_SHADOWS BLOOM WATER_FOG WAVING_PLANTS WAVING_LEAVES VIGNETTE FOG_QUALITY=2
 profile.HIGH=SHADOWS shadowMapResolution=2048 shadowDistance=128.0 SHADOW_SOFTNESS=2 COLORED_SHADOWS BLOOM WATER_FOG WAVING_PLANTS WAVING_LEAVES VIGNETTE TORCH_FLICKER CLOUD_TRANSLUCENCY FOG_QUALITY=2
-profile.EXTRA_HIGH=SHADOWS shadowMapResolution=2048 shadowDistance=160.0 SHADOW_SOFTNESS=2 COLORED_SHADOWS BLOOM WATER_FOG WAVING_PLANTS WAVING_LEAVES VIGNETTE TORCH_FLICKER CLOUD_TRANSLUCENCY FOG_QUALITY=2
+profile.EXTRA_HIGH=SHADOWS shadowMapResolution=2048 shadowDistance=160.0 SHADOW_SOFTNESS=2 COLORED_SHADOWS BLOOM WATER_FOG WAVING_PLANTS WAVING_LEAVES VIGNETTE TORCH_FLICKER CLOUD_TRANSLUCENCY FOG_QUALITY=2 MILKY_WAY MOON_GLOW MOONLIGHT=1.50 STAR_BRIGHTNESS=1.50 NIGHT_BRIGHTNESS=1.10 NIGHT_FOG=1.50
 
-screen=<profile> <empty> [SHADOW_SCREEN] [LIGHTING_SCREEN] [WORLD_SCREEN] [POST_SCREEN] <empty> [PERF_SCREEN]
+${vt.simpleMenu
+    ? `screen=<profile> SHADOWS shadowMapResolution shadowDistance SHADOW_SOFTNESS SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I MIN_LIGHT NIGHT_BRIGHTNESS MOONLIGHT STAR_BRIGHTNESS WAVING_PLANTS WAVING_LEAVES WATER_WAVES WATER_REFLECTION BLOOM BLOOM_STRENGTH TONEMAP EXPOSURE SATURATION CONTRAST VIGNETTE FOG_QUALITY SIMPLE_WATER SKIP_SKY_PROC`
+    : `screen=<profile> <empty> [SHADOW_SCREEN] [LIGHTING_SCREEN] [NIGHT_SCREEN] [WORLD_SCREEN] [POST_SCREEN] [PERF_SCREEN]
 screen.SHADOW_SCREEN=SHADOWS shadowMapResolution shadowDistance SHADOW_SOFTNESS COLORED_SHADOWS LOW_RES_SHADOW sunPathRotation
-screen.LIGHTING_SCREEN=SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I BLOCKLIGHT_WARMTH MIN_LIGHT HAND_LIGHT EMISSIVE_BLOCKS EMISSIVE_STRENGTH NIGHT_DESATURATION TORCH_FLICKER FAKE_AO CAVE_LIGHTING
-screen.WORLD_SCREEN=WAVING_PLANTS WAVING_LEAVES WAVING_STRENGTH WATER_WAVES WATER_REFLECTION WATER_FOG WATER_ALPHA WATER_TINT SIMPLE_WATER STARS FOG_DENSITY RAIN_FOG FOG_QUALITY SUNSET_INTENSITY CLOUD_TRANSLUCENCY
-screen.POST_SCREEN=BLOOM BLOOM_STRENGTH TONEMAP EXPOSURE SATURATION VIBRANCE CONTRAST VIGNETTE VIGNETTE_STRENGTH COLOR_TEMP SKIP_TONEMAP SKIP_DITHERING SKIP_SKY_PROC
-screen.PERF_SCREEN=<empty> [SHADOW_SCREEN] LOW_RES_SHADOW <empty> SIMPLE_WATER FOG_QUALITY CULL_DISTANCE <empty> SKIP_SKY_PROC SKIP_TONEMAP SKIP_DITHERING
-sliders=shadowDistance sunPathRotation SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I MIN_LIGHT EMISSIVE_STRENGTH WAVING_STRENGTH WATER_ALPHA FOG_DENSITY RAIN_FOG SUNSET_INTENSITY BLOOM_STRENGTH EXPOSURE SATURATION VIBRANCE CONTRAST VIGNETTE_STRENGTH COLOR_TEMP CULL_DISTANCE
+screen.LIGHTING_SCREEN=SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I BLOCKLIGHT_WARMTH MIN_LIGHT HAND_LIGHT EMISSIVE_BLOCKS EMISSIVE_STRENGTH TORCH_FLICKER FAKE_AO CAVE_LIGHTING
+screen.NIGHT_SCREEN=NIGHT_BRIGHTNESS MOONLIGHT NIGHT_TINT NIGHT_DESATURATION <empty> STARS STAR_BRIGHTNESS MILKY_WAY MOON_GLOW NIGHT_FOG
+screen.WORLD_SCREEN=WAVING_PLANTS WAVING_LEAVES WAVING_STRENGTH WATER_WAVES WATER_REFLECTION WATER_FOG WATER_ALPHA WATER_TINT SIMPLE_WATER FOG_DENSITY RAIN_FOG FOG_QUALITY SUNSET_INTENSITY CLOUD_TRANSLUCENCY
+screen.POST_SCREEN=BLOOM BLOOM_STRENGTH TONEMAP EXPOSURE SATURATION VIBRANCE CONTRAST VIGNETTE VIGNETTE_STRENGTH COLOR_TEMP
+screen.PERF_SCREEN=LOW_RES_SHADOW SIMPLE_WATER FOG_QUALITY CULL_DISTANCE <empty> SKIP_SKY_PROC SKIP_TONEMAP SKIP_DITHERING`}
+sliders=shadowDistance sunPathRotation SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I MIN_LIGHT EMISSIVE_STRENGTH WAVING_STRENGTH WATER_ALPHA FOG_DENSITY RAIN_FOG SUNSET_INTENSITY BLOOM_STRENGTH EXPOSURE SATURATION VIBRANCE CONTRAST VIGNETTE_STRENGTH COLOR_TEMP CULL_DISTANCE NIGHT_BRIGHTNESS MOONLIGHT STAR_BRIGHTNESS NIGHT_FOG
 `;
 }
 
 // ---------------------------------------------------------------------------
-// shaders/block.properties
+// shaders/block.properties — now version-aware (see compat.ts)
 // ---------------------------------------------------------------------------
-export const BLOCK_PROPERTIES = `# Vivid Lite Shaders — block.properties
-block.10001=minecraft:short_grass minecraft:grass minecraft:tall_grass minecraft:fern minecraft:large_fern minecraft:short_dry_grass minecraft:tall_dry_grass minecraft:bush minecraft:firefly_bush minecraft:dandelion minecraft:poppy minecraft:blue_orchid minecraft:allium minecraft:azure_bluet minecraft:red_tulip minecraft:orange_tulip minecraft:white_tulip minecraft:pink_tulip minecraft:oxeye_daisy minecraft:cornflower minecraft:lily_of_the_valley minecraft:wither_rose minecraft:torchflower minecraft:open_eyeblossom minecraft:closed_eyeblossom minecraft:cactus_flower minecraft:pink_petals minecraft:wildflowers minecraft:sunflower minecraft:lilac minecraft:rose_bush minecraft:peony minecraft:pitcher_plant minecraft:wheat minecraft:carrots minecraft:potatoes minecraft:beetroots minecraft:sugar_cane minecraft:dead_bush minecraft:sweet_berry_bush minecraft:nether_sprouts minecraft:warped_roots minecraft:crimson_roots minecraft:oak_sapling minecraft:spruce_sapling minecraft:birch_sapling minecraft:jungle_sapling minecraft:acacia_sapling minecraft:dark_oak_sapling minecraft:cherry_sapling minecraft:pale_oak_sapling minecraft:mangrove_propagule minecraft:bamboo_sapling minecraft:seagrass minecraft:tall_seagrass minecraft:kelp minecraft:kelp_plant minecraft:crimson_fungus minecraft:warped_fungus minecraft:red_mushroom minecraft:brown_mushroom
-block.10002=minecraft:oak_leaves minecraft:spruce_leaves minecraft:birch_leaves minecraft:jungle_leaves minecraft:acacia_leaves minecraft:dark_oak_leaves minecraft:mangrove_leaves minecraft:cherry_leaves minecraft:pale_oak_leaves minecraft:azalea_leaves minecraft:flowering_azalea_leaves minecraft:vine minecraft:cave_vines minecraft:cave_vines_plant minecraft:weeping_vines minecraft:weeping_vines_plant minecraft:twisting_vines minecraft:twisting_vines_plant minecraft:hanging_roots minecraft:pale_hanging_moss
-block.10003=minecraft:water minecraft:flowing_water
-block.10004=minecraft:lava minecraft:flowing_lava
-block.10010=minecraft:torch minecraft:wall_torch minecraft:soul_torch minecraft:soul_wall_torch minecraft:redstone_torch:lit=true minecraft:redstone_wall_torch:lit=true minecraft:lantern minecraft:soul_lantern minecraft:glowstone minecraft:sea_lantern minecraft:shroomlight minecraft:jack_o_lantern minecraft:end_rod minecraft:fire minecraft:soul_fire minecraft:campfire:lit=true minecraft:soul_campfire:lit=true minecraft:redstone_lamp:lit=true minecraft:beacon minecraft:ochre_froglight minecraft:verdant_froglight minecraft:pearlescent_froglight minecraft:copper_bulb:lit=true minecraft:exposed_copper_bulb:lit=true minecraft:weathered_copper_bulb:lit=true minecraft:oxidized_copper_bulb:lit=true minecraft:waxed_copper_bulb:lit=true minecraft:waxed_exposed_copper_bulb:lit=true minecraft:waxed_weathered_copper_bulb:lit=true minecraft:waxed_oxidized_copper_bulb:lit=true minecraft:crying_obsidian minecraft:respawn_anchor minecraft:end_portal_frame:eye=true minecraft:glow_lichen
-block.10011=minecraft:magma_block minecraft:enchanting_table minecraft:ender_chest minecraft:amethyst_cluster minecraft:large_amethyst_bud minecraft:medium_amethyst_bud minecraft:small_amethyst_bud minecraft:brewing_stand minecraft:sculk_catalyst minecraft:brown_mushroom_block minecraft:dragon_egg minecraft:furnace:lit=true minecraft:blast_furnace:lit=true minecraft:smoker:lit=true
-block.10012=minecraft:nether_portal
-`;
+export { buildBlockProperties };
 
 // ---------------------------------------------------------------------------
 // language
@@ -487,6 +542,21 @@ option.FOG_QUALITY=Chất lượng sương
 value.FOG_QUALITY.0=Tắt
 value.FOG_QUALITY.1=Rẻ (tuyến tính)
 value.FOG_QUALITY.2=Đầy đủ (khí quyển)
+screen.NIGHT_SCREEN=🌙 Ban đêm
+option.NIGHT_BRIGHTNESS=Độ sáng ban đêm
+option.NIGHT_BRIGHTNESS.comment=Chỉnh tổng thể độ sáng về đêm. Thấp = tối bí ẩn, cao = dễ nhìn.
+option.MOONLIGHT=Ánh trăng
+option.MOONLIGHT.comment=Cường độ ánh sáng định hướng từ mặt trăng. Có đổ bóng thật.
+option.NIGHT_TINT=Tông màu đêm
+value.NIGHT_TINT.0=Xanh dương (BSL)
+value.NIGHT_TINT.1=Xanh ngọc
+value.NIGHT_TINT.2=Tím
+option.STAR_BRIGHTNESS=Độ sáng sao
+option.MILKY_WAY=Dải Ngân Hà
+option.MILKY_WAY.comment=Dải sao mờ vắt ngang bầu trời đêm. Rất rẻ (tái dùng hash sẵn có).
+option.MOON_GLOW=Quầng sáng mặt trăng
+option.NIGHT_FOG=Sương đêm
+option.NIGHT_FOG.comment=Sương xanh lam ở xa vào ban đêm, tạo chiều sâu.
 `;
 
 export const LANG_EN = `screen.SHADOW_SCREEN=Shadows
@@ -563,6 +633,17 @@ option.FOG_QUALITY=Fog quality
 value.FOG_QUALITY.0=Off
 value.FOG_QUALITY.1=Cheap (linear)
 value.FOG_QUALITY.2=Full (atmospheric)
+screen.NIGHT_SCREEN=🌙 Night
+option.NIGHT_BRIGHTNESS=Night Brightness
+option.MOONLIGHT=Moonlight
+option.NIGHT_TINT=Night Tint
+value.NIGHT_TINT.0=Blue (BSL)
+value.NIGHT_TINT.1=Teal
+value.NIGHT_TINT.2=Purple
+option.STAR_BRIGHTNESS=Star Brightness
+option.MILKY_WAY=Milky Way band
+option.MOON_GLOW=Moon Glow
+option.NIGHT_FOG=Night Fog
 `;
 
 // ---------------------------------------------------------------------------
@@ -614,24 +695,46 @@ export function buildStubFiles(): Record<string, string> {
   return files;
 }
 
-export function buildReadme(pl: string): string {
+export function buildReadme(pl: string, s?: ShaderSettings): string {
+  const vt = s ? VERSION_TARGETS[s.mcVersion] : null;
+  const loaderTxt = s ? (s.loader === 'both' ? 'Iris + OptiFine' : s.loader === 'iris' ? 'Iris / Sodium' : 'OptiFine') : 'Iris + OptiFine';
   return `================================================================
-   VIVID LITE SHADERS  v1.0.1  —  preset dong goi: ${pl}
+   VIVID LITE SHADERS  v1.1.0  —  preset dong goi: ${pl}
 ================================================================
    Shader Minecraft phong cach BSL, toi uu cho may yeu.
-   Minecraft 26.2 + Iris + Sodium (Fabric).
+   Ho tro Minecraft 1.8 - 26.3, Iris va OptiFine.
+${vt ? `   Ban nay build cho: Minecraft ${vt.label}  |  ${loaderTxt}` : ''}
 ================================================================
 
-CAI DAT
--------
-1. Cai Fabric Loader cho Minecraft 26.2 tai fabricmc.net
-2. Tai Sodium + Iris (ban cho 26.2) tu modrinth.com
+CAI DAT (IRIS - khuyen dung, FPS cao nhat)
+------------------------------------------
+1. Cai Fabric Loader cho version Minecraft cua ban
+   tai fabricmc.net
+2. Tai Sodium + Iris (dung version) tu modrinth.com
    Bo 2 file .jar vao thu muc .minecraft/mods
 3. Bo NGUYEN file .zip nay (KHONG giai nen) vao
    .minecraft/shaderpacks
 4. Trong game: Options > Video Settings > Shader Packs
-   Chon "VividLite_v1.0.1_${pl}.zip" > Apply
+   Chon "VividLite_v1.1.0_${pl}.zip" > Apply
 5. Bam "Shader Pack Settings" de doi profile hoac tinh chinh
+
+CAI DAT (OPTIFINE)
+------------------
+1. Cai OptiFine HD U (dung version) tai optifine.net
+2. Bo file .zip vao .minecraft/shaderpacks
+3. Trong game: Options > Video Settings > Shaders...
+   Chon Vivid Lite
+
+MOI TRONG v1.1.0 - BAN DEM
+--------------------------
+Menu moi "Ban dem" trong Shader Pack Settings:
+  NIGHT_BRIGHTNESS - do sang tong the ban dem
+  MOONLIGHT        - cuong do anh trang (co do bong that)
+  NIGHT_TINT       - tong mau: Xanh duong / Xanh ngoc / Tim
+  STAR_BRIGHTNESS  - do sang sao
+  MILKY_WAY        - dai Ngan Ha vat ngang bau troi
+  MOON_GLOW        - quang sang mat trang
+  NIGHT_FOG        - suong dem xanh lam
 
 7 PROFILE CO SAN (chon trong Shader Pack Settings)
 --------------------------------------------------
@@ -662,14 +765,14 @@ MEO CHO MAY YEU
   Entity Culling, ModernFix
 - Bong do ton FPS nhat: giam Shadow Resolution truoc
 
-CO GI MOI TRONG v1.0.1
+CO GI MOI TRONG v1.1.0
 ----------------------
-- 4 profile moi: Extra Potato, Low Potato, High Potato, Extra High
-- 7 tuy chon toi uu moi: SKIP_SKY_PROC, SKIP_TONEMAP,
-  SKIP_DITHERING, SIMPLE_WATER, LOW_RES_SHADOW,
-  CULL_DISTANCE, FOG_QUALITY
-- Sua loi shader "undeclared identifier minLight"
-- Menu "Performance" moi trong game
+- Ho tro Minecraft 1.8 den 26.3 (4 nhom version)
+- Ho tro OptiFine song song voi Iris
+- Lam lai ban dem: anh trang theo chu ky, 3 tong mau,
+  sao 2 lop, Dai Ngan Ha, quang trang, suong dem
+- Legacy shadow path cho OptiFine doi cu
+- block.properties sinh theo version (khong con warning)
 
 LICENSE
 -------
@@ -885,7 +988,30 @@ export function buildChangelog(): string {
   VIVID LITE SHADERS  —  CHANGELOG
 ================================================================
 
-v1.0.1  (7 preset + Extra Potato mode)
+v1.1.0  (Compatibility & Night)
+-------------------------------
++ Ho tro Minecraft 1.8 - 26.3, chia 4 nhom version:
+    Legacy  (1.8 - 1.12.2)  block ID so, shadow manual, RGB16
+    Classic (1.13 - 1.16.5) namespaced ID, hardware PCF
+    Modern  (1.17 - 1.20.6) them block 1.17+
+    Latest  (1.21 - 26.3)   block moi nhat
++ Ho tro OptiFine song song voi Iris (3 che do loader)
++ Legacy shadow path: sampler2D + manual compare
++ LAM LAI BAN DEM:
+    - Anh trang that co do bong, theo chu ky trang
+    - 3 tong mau dem: xanh duong / xanh ngoc / tim
+    - Sao 2 lop + nhap nhay + bien thien mau
+    - Dai Ngan Ha vat ngang bau troi
+    - Quang sang mat trang nhieu lop
+    - Suong dem xanh lam
+    - Purkinje shift (canh toi mat bao hoa)
+    - Airglow: chan troi dem khong den tuyen
++ 7 tuy chon dem moi + menu "Ban dem"
++ shadow.enabled cho Iris
++ block.properties sinh theo version
++ README.md day du cho GitHub
+
+v1.0.1  (8 preset + Extra Potato mode)
 --------------------------------------
 + 4 profile moi:
     - Extra Potato (~98% FPS)

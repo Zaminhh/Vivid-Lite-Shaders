@@ -366,14 +366,38 @@ ${VIEW_DIR_FROM_FRAGCOORD}
     sky += disk * (lightCol * 6.0 + vec3(0.15)) * (1.0 - rainStrength) * step(-0.03, dir.y);
 #endif
 #ifdef STARS
-    float starsF = (1.0 - smoothstep(-0.10, 0.05, sunDirW.y)) * (1.0 - rainStrength) * smoothstep(0.0, 0.2, dir.y);
-    if (starsF > 0.0) {
-        vec3  p    = dir * 120.0;
-        float h    = hash13(floor(p));
-        float d    = length(fract(p) - 0.5);
-        float star = step(0.992, h) * (1.0 - smoothstep(0.05, 0.35, d));
-        star *= 0.7 + 0.3 * sin(frameTimeCounter * 3.0 + h * 100.0);
-        sky += vec3(0.8, 0.85, 1.0) * star * 0.4 * starsF;
+    // ── star field v1.1.0: two layers + twinkle + optional Milky Way band ──
+    float starsF = getNightFactor(sunDirW.y) * (1.0 - rainStrength) * smoothstep(-0.02, 0.18, dir.y);
+    if (starsF > 0.0 && STAR_BRIGHTNESS > 0.001) {
+        // bright layer
+        vec3  p1 = dir * 110.0;
+        float h1 = hash13(floor(p1));
+        float d1 = length(fract(p1) - 0.5);
+        float s1 = step(0.9955, h1) * (1.0 - smoothstep(0.04, 0.30, d1));
+        s1 *= 0.55 + 0.45 * sin(frameTimeCounter * 2.2 + h1 * 210.0);
+
+        // faint dense layer (adds depth for almost no cost)
+        vec3  p2 = dir * 260.0;
+        float h2 = hash13(floor(p2) + 37.0);
+        float d2 = length(fract(p2) - 0.5);
+        float s2 = step(0.9975, h2) * (1.0 - smoothstep(0.06, 0.34, d2)) * 0.45;
+        s2 *= 0.6 + 0.4 * sin(frameTimeCounter * 1.4 + h2 * 130.0);
+
+        // slight color variation: warm / cool stars
+        vec3 starTint = mix(vec3(0.75, 0.84, 1.00), vec3(1.00, 0.88, 0.74), fract(h1 * 7.31));
+
+        float band = 1.0;
+#ifdef MILKY_WAY
+        // galactic band: a soft stripe across a fixed sky axis
+        vec3  axis = normalize(vec3(0.55, 0.32, -0.77));
+        float bd   = 1.0 - abs(dot(dir, axis));
+        float mw   = pow(sat(bd), 14.0);
+        // clumpiness from the same hash — no extra texture, no noise texture needed
+        mw *= 0.55 + 0.45 * hash13(floor(dir * 24.0));
+        sky += NIGHT_LIGHT_COL * mw * 0.055 * starsF * STAR_BRIGHTNESS;
+        band = 1.0 + mw * 1.8;   // more stars inside the band
+#endif
+        sky += starTint * (s1 + s2) * band * 0.55 * starsF * STAR_BRIGHTNESS;
     }
 #endif
 #endif

@@ -1,7 +1,8 @@
 import { lazy, useMemo, useState } from 'react';
 import { Check, ChevronRight, Download, FileArchive, Loader2, Moon, RotateCcw, Sun, Zap } from 'lucide-react';
 import { cn } from '../utils/cn';
-import { OPTION_VALUES, PRESETS, PRESET_META, detectPreset, type PresetId, type ShaderSettings } from '../shader/settings';
+import { OPTION_VALUES, PRESETS, PRESET_META, applyPresetKeepCompat, detectPreset, type PresetId, type ShaderSettings } from '../shader/settings';
+import { LOADER_META, VERSION_TARGETS, type LoaderId, type VersionTargetId } from '../shader/compat';
 import { buildPackFiles, downloadPack, packFileName, packSizeBytes } from '../shader/pack';
 import { MACHINES, estimateCost } from '../shader/estimate';
 import { IMAGES } from '../assets/images';
@@ -57,10 +58,11 @@ function Slider({ label, value, values, onChange, format, disabled, hint }: { la
   );
 }
 
-type TabId = 'shadows' | 'lighting' | 'world' | 'post' | 'perf';
+type TabId = 'shadows' | 'lighting' | 'night' | 'world' | 'post' | 'perf';
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'shadows', label: 'Bóng đổ', icon: '🌗' },
   { id: 'lighting', label: 'Ánh sáng', icon: '💡' },
+  { id: 'night', label: 'Ban đêm', icon: '🌙' },
   { id: 'world', label: 'Thế giới', icon: '🌍' },
   { id: 'post', label: 'Màu sắc', icon: '🎨' },
   { id: 'perf', label: 'Hiệu năng', icon: '⚡' },
@@ -83,20 +85,29 @@ export default function Builder() {
   const cost = useMemo(() => estimateCost(s), [s]);
 
   const set = <K extends keyof ShaderSettings>(key: K, val: ShaderSettings[K]) => { setDl(null); setS((prev) => ({ ...prev, [key]: val })); };
-  const applyPreset = (id: PresetId) => { setDl(null); setS(PRESETS[id]); };
+  const applyPreset = (id: PresetId) => { setDl(null); setS((prev) => applyPresetKeepCompat(PRESETS[id], prev)); };
 
   const onDownload = async () => {
     setBusy(true);
     try { const bytes = await downloadPack(s); setDl({ name: packFileName(s), bytes }); } finally { setBusy(false); }
   };
 
+  const isNight = scene === 'night';
   const previewFilter = (() => {
     const ts = s.tonemap === 0 ? 0.9 : s.tonemap === 2 ? 0.97 : 1;
-    const sat = (s.saturation + s.vibrance * 0.45) * ts;
+    let sat = (s.saturation + s.vibrance * 0.45) * ts;
     const con = s.contrast * (s.shadows ? 1.05 : 0.96) * (s.tonemap === 0 ? 0.94 : 1);
-    return `saturate(${sat.toFixed(2)}) contrast(${con.toFixed(2)}) brightness(${s.exposure.toFixed(2)})`;
+    let bright = s.exposure;
+    let hue = 0;
+    if (isNight) {
+      bright *= 0.55 + s.nightBrightness * 0.3 + s.moonlight * 0.08;
+      if (s.nightDesat) sat *= 0.7;
+      hue = s.nightTint === 1 ? -22 : s.nightTint === 2 ? 28 : 0;
+    }
+    return `saturate(${sat.toFixed(2)}) contrast(${con.toFixed(2)}) brightness(${bright.toFixed(2)}) hue-rotate(${hue}deg)`;
   })();
-  const imgSrc = scene === 'day' ? IMAGES.previewDay : IMAGES.previewNight;
+  const imgSrc = isNight ? IMAGES.previewNight : IMAGES.previewDay;
+  const nightTintRgb = s.nightTint === 1 ? '20,110,120' : s.nightTint === 2 ? '90,55,150' : '40,70,160';
 
   const tabContent: Record<TabId, React.ReactNode> = {
     shadows: (
@@ -126,6 +137,24 @@ export default function Builder() {
         <Choice label="Chiếu sáng hang" value={s.caveLighting} options={[{ value: 0 as const, label: 'Vanilla' }, { value: 1 as const, label: 'Tăng sáng' }]} onChange={(v) => set('caveLighting', v)} />
       </div>
     ),
+    night: (
+      <div>
+        <div className="mb-4 rounded-xl border border-indigo-400/25 bg-indigo-400/5 p-3 text-xs text-indigo-100/90">
+          <strong className="text-indigo-200">🌙 Ban đêm làm lại (v1.1.0).</strong> Ánh trăng có đổ bóng thật và thay đổi theo chu kỳ trăng. Trăng tròn sáng gấp ~3× trăng non.
+        </div>
+        <div className="divide-y divide-white/5">
+          <Slider label="Độ sáng ban đêm" hint="Thấp = tối bí ẩn · Cao = dễ nhìn" value={s.nightBrightness} values={OPTION_VALUES.nightBrightness} onChange={(v) => set('nightBrightness', v)} format={f2} />
+          <Slider label="Ánh trăng" hint="Cường độ ánh sáng định hướng từ mặt trăng (có bóng đổ)" value={s.moonlight} values={OPTION_VALUES.moonlight} onChange={(v) => set('moonlight', v)} format={f2} />
+          <Choice label="Tông màu đêm" value={s.nightTint} options={[{ value: 0 as const, label: '🔵 Xanh dương (BSL)' }, { value: 1 as const, label: '🟢 Xanh ngọc' }, { value: 2 as const, label: '🟣 Tím' }]} onChange={(v) => set('nightTint', v)} />
+          <Toggle label="Giảm màu ban đêm (Purkinje)" hint="Cảnh tối mất bão hòa, ngả về tông đêm — giống mắt người" checked={s.nightDesat} onChange={(v) => set('nightDesat', v)} />
+          <Toggle label="Sao đêm" checked={s.stars} onChange={(v) => set('stars', v)} />
+          <Slider label="Độ sáng sao" hint="Sao 2 lớp: lớp sáng thưa + lớp mờ dày" value={s.starBrightness} values={OPTION_VALUES.starBrightness} onChange={(v) => set('starBrightness', v)} format={f2} disabled={!s.stars} />
+          <Toggle label="Dải Ngân Hà" hint="Dải sao mờ vắt ngang bầu trời — tái dùng hash sẵn có, chi phí ~0" checked={s.milkyWay} onChange={(v) => set('milkyWay', v)} disabled={!s.stars} />
+          <Toggle label="Quầng sáng mặt trăng" hint="Halo nhiều lớp quanh mặt trăng" checked={s.moonGlow} onChange={(v) => set('moonGlow', v)} />
+          <Slider label="Sương đêm" hint="Sương xanh lam ở xa, tạo chiều sâu ban đêm" value={s.nightFog} values={OPTION_VALUES.nightFog} onChange={(v) => set('nightFog', v)} format={f2} />
+        </div>
+      </div>
+    ),
     world: (
       <div className="divide-y divide-white/5">
         <Toggle label="Cỏ, hoa đung đưa" checked={s.wavingPlants} onChange={(v) => set('wavingPlants', v)} />
@@ -137,7 +166,6 @@ export default function Builder() {
         <Slider label="Độ đục của nước" value={s.waterAlpha} values={OPTION_VALUES.waterAlpha} onChange={(v) => set('waterAlpha', v)} format={fPct} />
         <Choice label="Màu nước" value={s.waterTint} options={[{ value: 0 as const, label: 'Mặc định' }, { value: 1 as const, label: 'Nhiệt đới (teal)' }, { value: 2 as const, label: 'Đầm lầy (rêu)' }]} onChange={(v) => set('waterTint', v)} />
         <Toggle label="Mặt trời tròn" hint="Ẩn mặt trời vuông vanilla" checked={s.roundSun} onChange={(v) => set('roundSun', v)} />
-        <Toggle label="Sao đêm lấp lánh" checked={s.stars} onChange={(v) => set('stars', v)} />
         <Slider label="Hoàng hôn rực rỡ" hint="Cao = cam hồng đậm hơn" value={s.sunsetIntensity} values={OPTION_VALUES.sunsetIntensity} onChange={(v) => set('sunsetIntensity', v)} format={f2} />
         <Slider label="Độ dày sương" value={s.fogDensity} values={OPTION_VALUES.fogDensity} onChange={(v) => set('fogDensity', v)} format={f2} />
         <Slider label="Sương mưa" hint="Sương thêm khi mưa" value={s.rainFog} values={OPTION_VALUES.rainFog} onChange={(v) => set('rainFog', v)} format={f2} />
@@ -187,8 +215,59 @@ export default function Builder() {
           <p className="mt-4 text-slate-400">Chọn preset rồi tinh chỉnh. File .zip tạo ngay trên trình duyệt — mọi tùy chọn vẫn chỉnh trong game được.</p>
         </Reveal>
 
+        {/* version + loader selector */}
+        <Reveal className="glass mt-8 p-5">
+          <div className="grid gap-5 md:grid-cols-2">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-bold text-white">
+                <span>🎮</span> Phiên bản Minecraft
+                <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 font-mono text-[9px] text-emerald-300">1.8 → 26.3</span>
+              </h3>
+              <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+                {(Object.keys(VERSION_TARGETS) as VersionTargetId[]).map((id) => {
+                  const vt = VERSION_TARGETS[id]; const active = s.mcVersion === id;
+                  return (
+                    <button key={id} type="button" onClick={() => set('mcVersion', id)}
+                      className={cn('rounded-lg border px-3 py-2 text-left transition-colors',
+                        active ? 'border-amber-400/50 bg-amber-400/15' : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.07]')}>
+                      <span className={cn('block text-xs font-bold', active ? 'text-amber-200' : 'text-slate-200')}>{vt.label}</span>
+                      <span className="mt-0.5 block font-mono text-[9px] text-slate-500">{id}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] leading-snug text-slate-500">{VERSION_TARGETS[s.mcVersion].note}</p>
+            </div>
+
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-bold text-white">
+                <span>🧩</span> Loader
+              </h3>
+              <div className="mt-2.5 space-y-1.5">
+                {(Object.keys(LOADER_META) as LoaderId[]).map((id) => {
+                  const lm = LOADER_META[id]; const active = s.loader === id;
+                  return (
+                    <button key={id} type="button" onClick={() => set('loader', id)}
+                      className={cn('flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors',
+                        active ? 'border-amber-400/50 bg-amber-400/15' : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.07]')}>
+                      <span className="text-base leading-none mt-0.5">{lm.emoji}</span>
+                      <span className="min-w-0">
+                        <span className={cn('block text-xs font-bold', active ? 'text-amber-200' : 'text-slate-200')}>{lm.label}</span>
+                        <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">{lm.desc}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500">
+                Hỗ trợ: <span className="text-slate-400">{VERSION_TARGETS[s.mcVersion].loaders}</span>
+              </p>
+            </div>
+          </div>
+        </Reveal>
+
         {/* preset grid — 8 tùy chọn chia 3 nhóm */}
-        <div className="mt-10 space-y-6">
+        <div className="mt-8 space-y-6">
           {(['potato', 'balanced', 'high'] as const).map((tier, tierIdx) => {
             const tierIds = (Object.keys(PRESETS) as PresetId[]).filter((id) => PRESET_META[id].tier === tier);
             const tierMeta = {
@@ -272,6 +351,25 @@ export default function Builder() {
               <div className="relative aspect-video">
                 <img src={imgSrc} alt="Preview" className="absolute inset-0 h-full w-full object-cover" style={{ filter: previewFilter }} />
                 {s.bloom && <img src={imgSrc} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover mix-blend-screen" style={{ filter: 'blur(12px) brightness(0.8) saturate(1.3)', opacity: Math.min(0.8, s.bloomStrength * 3) }} />}
+                {isNight && (
+                  <div className="absolute inset-0 mix-blend-soft-light transition-opacity duration-300"
+                    style={{ background: `linear-gradient(to bottom, rgba(${nightTintRgb},0.9), rgba(${nightTintRgb},0.35))`, opacity: 0.55 + s.nightFog * 0.12 }} />
+                )}
+                {isNight && s.stars && s.starBrightness > 0 && (
+                  <div className="absolute inset-x-0 top-0 h-1/2 transition-opacity duration-300"
+                    style={{
+                      backgroundImage: 'radial-gradient(1px 1px at 12% 22%, #fff, transparent), radial-gradient(1px 1px at 34% 12%, #cfe3ff, transparent), radial-gradient(1px 1px at 58% 28%, #fff, transparent), radial-gradient(1px 1px at 76% 15%, #ffe8cf, transparent), radial-gradient(1px 1px at 88% 34%, #fff, transparent), radial-gradient(1px 1px at 22% 38%, #fff, transparent), radial-gradient(1px 1px at 66% 8%, #fff, transparent)',
+                      opacity: Math.min(1, s.starBrightness * 0.55),
+                    }} />
+                )}
+                {isNight && s.milkyWay && s.stars && (
+                  <div className="absolute inset-0 mix-blend-screen transition-opacity duration-300"
+                    style={{ background: 'linear-gradient(115deg, transparent 34%, rgba(150,180,255,0.16) 45%, rgba(190,205,255,0.22) 50%, rgba(150,180,255,0.16) 55%, transparent 66%)', opacity: Math.min(1, s.starBrightness * 0.8) }} />
+                )}
+                {isNight && s.moonGlow && s.moonlight > 0 && (
+                  <div className="absolute right-[18%] top-[12%] h-16 w-16 -translate-y-1/2 rounded-full mix-blend-screen transition-opacity duration-300"
+                    style={{ background: `radial-gradient(circle, rgba(${nightTintRgb},0.55) 0%, rgba(${nightTintRgb},0.18) 40%, transparent 70%)`, opacity: Math.min(1, s.moonlight * 0.7) }} />
+                )}
                 {s.vignette && <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.8) 100%)', opacity: s.vignetteStrength * 0.7 }} />}
                 {!s.shadows && <div className="absolute inset-0 bg-white/[0.05] mix-blend-screen" />}
                 <div className="absolute left-3 top-3 flex gap-1 rounded-lg bg-night-950/70 p-1">

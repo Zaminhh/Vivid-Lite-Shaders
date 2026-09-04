@@ -31,6 +31,7 @@ uniform float near;
 uniform float far;
 uniform int isEyeInWater;
 uniform int worldTime;
+uniform int moonPhase;
 uniform int heldBlockLightValue;
 uniform int heldBlockLightValue2;
 uniform ivec2 eyeBrightnessSmooth;
@@ -71,6 +72,26 @@ float getDayFactor(float sunH)    { return smoothstep(-0.05, 0.25, sunH); }
 float getSunsetFactor(float sunH) { float s = 1.0 - smoothstep(0.0, 0.32, abs(sunH)); return s * s; }
 float getSunVis(float sunH)       { return smoothstep(-0.04, 0.14, sunH); }
 float getMoonVis(float sunH)      { return smoothstep(0.02, 0.18, -sunH); }
+/** 0 at day, 1 deep in the night — drives every night-only effect. */
+float getNightFactor(float sunH)  { return 1.0 - smoothstep(-0.12, 0.06, sunH); }
+
+// Night palette (v1.1.0). NIGHT_TINT: 0 blue (BSL), 1 teal, 2 purple.
+#if NIGHT_TINT == 1
+    #define NIGHT_LIGHT_COL vec3(0.30, 0.62, 0.72)
+    #define NIGHT_AMB_COL   vec3(0.13, 0.30, 0.36)
+    #define NIGHT_ZENITH    vec3(0.004, 0.020, 0.032)
+    #define NIGHT_HORIZON   vec3(0.014, 0.046, 0.060)
+#elif NIGHT_TINT == 2
+    #define NIGHT_LIGHT_COL vec3(0.52, 0.40, 0.86)
+    #define NIGHT_AMB_COL   vec3(0.22, 0.16, 0.40)
+    #define NIGHT_ZENITH    vec3(0.014, 0.007, 0.034)
+    #define NIGHT_HORIZON   vec3(0.034, 0.020, 0.062)
+#else
+    #define NIGHT_LIGHT_COL vec3(0.34, 0.50, 0.95)
+    #define NIGHT_AMB_COL   vec3(0.14, 0.24, 0.50)
+    #define NIGHT_ZENITH    vec3(0.005, 0.010, 0.030)
+    #define NIGHT_HORIZON   vec3(0.018, 0.034, 0.070)
+#endif
 
 // Direct light (sun or moon, whichever is up) and ambient sky light.
 void getLightColors(float sunH, float rain, vec3 fogLin, out vec3 lightCol, out vec3 ambientCol) {
@@ -83,12 +104,20 @@ void getLightColors(float sunH, float rain, vec3 fogLin, out vec3 lightCol, out 
 #else
     float dayF    = getDayFactor(sunH);
     float sunsetF = getSunsetFactor(sunH);
+    float nightF  = getNightFactor(sunH);
 
     vec3 sunCol  = mix(vec3(1.00, 0.46, 0.16) * 1.05, vec3(1.00, 0.93, 0.82) * 1.30, smoothstep(0.02, 0.36, sunH)) * getSunVis(sunH);
-    vec3 moonCol = vec3(0.30, 0.45, 0.85) * 0.20 * getMoonVis(sunH);
 
-    vec3 amb = mix(vec3(0.16, 0.26, 0.52) * 0.16, vec3(0.40, 0.56, 0.92) * 0.42, dayF);
+    // ── moonlight (v1.1.0): brighter, tinted, follows the moon phase ──
+    // moonPhase 0 = full moon, 4 = new moon (Minecraft convention)
+    float phase   = 1.0 - abs(float(moonPhase) - 4.0) * 0.25;   // 0 (new) .. 1 (full)
+    float phaseI  = mix(0.35, 1.0, phase);
+    vec3  moonCol = NIGHT_LIGHT_COL * 0.30 * phaseI * MOONLIGHT * getMoonVis(sunH);
+
+    vec3 amb = mix(NIGHT_AMB_COL * 0.42, vec3(0.40, 0.56, 0.92) * 0.42, dayF);
     amb      = mix(amb, vec3(0.62, 0.42, 0.48) * 0.32, sunsetF * 0.6);
+    // lift night ambient a touch so caves/interiors read as "night", not "black"
+    amb     *= mix(1.0, NIGHT_BRIGHTNESS * (0.65 + 0.35 * phaseI), nightF);
 
     vec3 light = (sunCol + moonCol) * (1.0 - 0.92 * rain);
     amb = mix(amb, vec3(luma(amb)) * vec3(0.85, 0.90, 1.00), rain * 0.6) * (1.0 - 0.25 * rain);
@@ -117,8 +146,15 @@ vec3 getSkyColor(vec3 dir, vec3 sunDir, float rain, vec3 fogLin) {
     vec2 s2 = sunDir.xz / (length(sunDir.xz) + 0.001);
     float azim = dot(d2, s2) * 0.5 + 0.5;
 
-    vec3 zenith  = mix(vec3(0.004, 0.008, 0.026), vec3(0.030, 0.150, 0.620), dayF);
-    vec3 horizon = mix(vec3(0.012, 0.020, 0.048), vec3(0.420, 0.600, 0.900), dayF);
+    float nightF = getNightFactor(sunH);
+    float phase  = 1.0 - abs(float(moonPhase) - 4.0) * 0.25;
+
+    // ── night sky (v1.1.0): deeper, tinted, with a subtle horizon lift ──
+    vec3 nightZen = NIGHT_ZENITH  * NIGHT_BRIGHTNESS;
+    vec3 nightHor = NIGHT_HORIZON * NIGHT_BRIGHTNESS;
+
+    vec3 zenith  = mix(nightZen, vec3(0.030, 0.150, 0.620), dayF);
+    vec3 horizon = mix(nightHor, vec3(0.420, 0.600, 0.900), dayF);
 
     vec3 setHor = mix(vec3(0.50, 0.24, 0.36), vec3(1.00, 0.42, 0.12), azim * azim);
     zenith  = mix(zenith,  vec3(0.045, 0.070, 0.240), sunsetF * 0.7);
@@ -132,9 +168,18 @@ vec3 getSkyColor(vec3 dir, vec3 sunDir, float rain, vec3 fogLin) {
     glow *= mix(0.35, 1.6, sunsetF) * getSunVis(sunH) * (1.0 - 0.5 * upF);
     sky += mix(vec3(1.0, 0.92, 0.75), vec3(1.0, 0.45, 0.15), sunsetF) * glow;
 
-    // faint moon glow
+    // ── moon halo (v1.1.0) ──
     float VdotM = max(dot(dir, -sunDir), 0.0);
-    sky += vec3(0.25, 0.35, 0.60) * pow(VdotM, 30.0) * 0.06 * getMoonVis(sunH);
+    float moonVis = getMoonVis(sunH);
+#ifdef MOON_GLOW
+    float halo = pow(VdotM, 12.0) * 0.10 + pow(VdotM, 90.0) * 0.55 + pow(VdotM, 3.0) * 0.018;
+    sky += NIGHT_LIGHT_COL * halo * moonVis * phase * MOONLIGHT * 0.9;
+#else
+    sky += NIGHT_LIGHT_COL * pow(VdotM, 30.0) * 0.06 * moonVis;
+#endif
+
+    // faint airglow so the night horizon never reads as pure black
+    sky += NIGHT_HORIZON * 0.5 * nightF * (1.0 - t) * NIGHT_BRIGHTNESS;
 
     // below the horizon
     float below = smoothstep(0.0, 0.3, -dir.y);
@@ -176,13 +221,35 @@ vec3 getWave(int id, vec3 worldPos, bool topVertex, float time, float rain) {
 
 export const LIB_SHADOWS = `// lib/shadows.glsl — distorted shadow map lookup with hardware PCF (2x2 taps for free)
 #if defined SHADOWS && !defined NO_SHADOWS
+uniform mat4 shadowModelView;
+uniform mat4 shadowProjection;
+
+#ifdef LEGACY_SHADOW
+// ── Legacy path (MC 1.8–1.12 / old OptiFine / drivers without shadow samplers) ──
+// Plain sampler2D + manual depth comparison. Works everywhere, costs one extra compare.
+uniform sampler2D shadowtex1;
+#ifdef COLORED_SHADOWS
+uniform sampler2D shadowtex0;
+uniform sampler2D shadowcolor0;
+#endif
+
+vec3 sampleShadow(vec3 p) {
+    float opaque = step(p.z, texture2D(shadowtex1, p.xy).x);
+#ifdef COLORED_SHADOWS
+    float all  = step(p.z, texture2D(shadowtex0, p.xy).x);
+    vec3  tint = texture2D(shadowcolor0, p.xy).rgb;
+    return mix(tint * opaque, vec3(1.0), all);
+#else
+    return vec3(opaque);
+#endif
+}
+#else
+// ── Modern path: hardware PCF gives a free 2×2 blur ──
 uniform sampler2DShadow shadowtex1;
 #ifdef COLORED_SHADOWS
 uniform sampler2DShadow shadowtex0;
 uniform sampler2D shadowcolor0;
 #endif
-uniform mat4 shadowModelView;
-uniform mat4 shadowProjection;
 
 vec3 sampleShadow(vec3 p) {
     float opaque = shadow2D(shadowtex1, p).x;
@@ -194,6 +261,7 @@ vec3 sampleShadow(vec3 p) {
     return vec3(opaque);
 #endif
 }
+#endif
 
 // feetPos: player-space position. offsetDir: normal (solid) or light direction (plants).
 vec3 getShadow(vec3 feetPos, vec3 offsetDir, float NdotL) {
@@ -316,8 +384,10 @@ vec3 getLighting(vec3 albedo, vec3 normal, vec2 lm, vec3 feetPos, float foliage,
     vec3 color = albedo * lighting;
 
 #ifdef NIGHT_DESATURATION
+    // Purkinje-like shift: dim scenes lose saturation and drift toward the night tint.
     float desat = sat(1.0 - luma(lighting) * 4.0) * 0.5;
-    color = mix(color, vec3(luma(color)) * vec3(0.85, 0.95, 1.10), desat);
+    vec3  scotopic = vec3(luma(color)) * normalize(NIGHT_AMB_COL + 0.55);
+    color = mix(color, scotopic, desat);
 #endif
     color *= 1.0 - 0.7 * darknessFactor;
     return color;
@@ -361,6 +431,16 @@ vec3 applyFog(vec3 color, vec3 feetPos, vec3 sunDirW, float rain, vec3 fogLin, f
     // full atmospheric fog: sky color at the fog direction
     vec3 fogDir = normalize(vec3(dir.x, max(dir.y, 0.0) * 0.25 + 0.02, dir.z));
     vec3 fogCol = getSkyColor(fogDir, sunDirW, rain, fogLin) * mix(0.06, 1.0, eyeSky);
+#endif
+
+#if !defined NETHER && !defined END
+    // ── night haze (v1.1.0): cool blue depth at night, only outdoors ──
+    float nF = getNightFactor(sunDirW.y) * eyeSky * NIGHT_FOG;
+    if (nF > 0.001) {
+        float nHaze = (1.0 - exp(-dist * 0.0020 * NIGHT_FOG)) * nF;
+        fog    = 1.0 - (1.0 - fog) * (1.0 - nHaze * 0.55);
+        fogCol = mix(fogCol, NIGHT_HORIZON * 2.2 * NIGHT_BRIGHTNESS, nF * 0.5);
+    }
 #endif
 
     fog    = max(fog, blindness * smoothstep(0.0, 6.0, dist));

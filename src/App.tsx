@@ -2,6 +2,7 @@ import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Features from './components/Features';
 import PerformanceExplainer from './components/PerformanceExplainer';
+import Compatibility from './components/Compatibility';
 import Compare from './components/Compare';
 import Builder from './components/Builder';
 import InstallGuide from './components/InstallGuide';
@@ -16,6 +17,7 @@ export default function App() {
         <Hero />
         <Features />
         <PerformanceExplainer />
+        <Compatibility />
         <Compare />
         <Builder />
         <InstallGuide />

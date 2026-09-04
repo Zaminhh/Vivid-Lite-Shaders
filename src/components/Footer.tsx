@@ -43,7 +43,7 @@ export default function Footer() {
         </div>
       </Reveal>
       <div className="mx-auto mt-10 flex max-w-7xl items-center justify-between px-4 text-xs text-slate-500 sm:px-6 lg:px-8">
-        <span>© 2026 Vivid Lite Shaders · v1.0.1</span>
+        <span>© 2026 Vivid Lite Shaders · v1.1.0 · MC 1.8–26.3</span>
         <span className="inline-flex items-center gap-1">
           Made with <Heart className="h-3 w-3 text-rose-400 animate-pulse" /> cho máy yếu
         </span>
