@@ -6,6 +6,25 @@ All notable changes to **Vivid Lite Shaders**.
 
 ---
 
+## [1.1.2] — Shadow fix *(work in progress — sections are added as each step is approved)*
+
+### 🐛 Fixed — shadows never loaded
+- **Root cause:** `lib/shadows.glsl` → `getShadow()` read `sp.xy` *before* `sp` was declared. Every program that includes the shadow lib (`gbuffers_terrain`, `gbuffers_water`, `gbuffers_entities`) failed to compile whenever `SHADOWS` was on — on every version bucket and on both Iris and OptiFine.
+- Shadow projection is now a single helper (`shadowProject`) that mirrors the distortion in `program/shadow.glsl` exactly; the normal-offset bias is computed from the un-offset position first.
+- Samples that fall outside the shadow map now return "lit" instead of clamped-edge garbage.
+- `shaders.properties`: removed `shadow.enabled=SHADOWS` — Iris only accepts a literal `true`/`false` for that key (it logged a warning and ignored it). Replaced with `program.shadow.enabled=SHADOWS`, which both Iris and OptiFine evaluate against the live option value. Program toggles are now emitted for every loader.
+- Renamed a local called `all` (a GLSL built-in function name) that stricter drivers can reject.
+
+### 🐛 Fixed — other compile errors found by the new harness
+- End dimension: `blI` was declared twice in `getLighting()` → every End program failed to compile.
+- `#if SMALL_WAVE` → `#ifdef SMALL_WAVE` (an empty `#define` made `#if` error out when combined with water waves).
+
+### 🧪 Tooling
+- `npm run validate` — builds all 8 presets (+2 stress configs) × 4 version buckets × 3 loaders and compiles every `.vsh`/`.fsh` with Khronos glslangValidator (GLSL 1.20), resolving `#include` like Iris/OptiFine do.
+- `npm run packs` — headless pack builder → `release/v<ver>/` with `SHA256SUMS` + `index.html`, used for temporary test uploads.
+
+---
+
 ## [1.1.1] — More optimizations
 
 ### ➕ 8 new performance options (18 total)

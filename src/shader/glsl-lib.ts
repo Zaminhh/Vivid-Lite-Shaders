@@ -260,9 +260,9 @@ uniform sampler2D shadowcolor0;
 vec3 sampleShadow(vec3 p) {
     float opaque = step(p.z, texture2D(shadowtex1, p.xy).x);
 #ifdef COLORED_SHADOWS
-    float all  = step(p.z, texture2D(shadowtex0, p.xy).x);
+    float allT = step(p.z, texture2D(shadowtex0, p.xy).x);
     vec3  tint = texture2D(shadowcolor0, p.xy).rgb;
-    return mix(tint * opaque, vec3(1.0), all);
+    return mix(tint * opaque, vec3(1.0), allT);
 #else
     return vec3(opaque);
 #endif
@@ -278,14 +278,25 @@ uniform sampler2D shadowcolor0;
 vec3 sampleShadow(vec3 p) {
     float opaque = shadow2D(shadowtex1, p).x;
 #ifdef COLORED_SHADOWS
-    float all  = shadow2D(shadowtex0, p).x;
+    float allT = shadow2D(shadowtex0, p).x;
     vec3  tint = texture2D(shadowcolor0, p.xy).rgb;
-    return mix(tint * opaque, vec3(1.0), all);
+    return mix(tint * opaque, vec3(1.0), allT);
 #else
     return vec3(opaque);
 #endif
 }
 #endif
+
+// Project a player-space position into distorted shadow-map UV + depth.
+// MUST mirror the distortion in program/shadow.glsl exactly, otherwise the
+// lookup lands on the wrong texel and shadows vanish / smear.
+vec3 shadowProject(vec3 feetPos) {
+    vec3 sp = (shadowProjection * (shadowModelView * vec4(feetPos, 1.0))).xyz;
+    float df = length(sp.xy) * SHADOW_DISTORT + (1.0 - SHADOW_DISTORT);
+    sp.xy /= df;
+    sp.z  *= 0.2;               // same depth squash as the shadow pass
+    return sp * 0.5 + 0.5;      // clip [-1,1] -> texture [0,1]
+}
 
 // feetPos: player-space position. offsetDir: normal (solid) or light direction (plants).
 vec3 getShadow(vec3 feetPos, vec3 offsetDir, float NdotL) {
@@ -295,23 +306,26 @@ vec3 getShadow(vec3 feetPos, vec3 offsetDir, float NdotL) {
     float fade = sat((dist - shadowDistance * 0.7) / (shadowDistance * 0.3));
     if (fade >= 1.0) return vec3(1.0);
 
-    // ── mad() the length, then mad with SHADOW_DISTORT ──
-    float lxy = length(sp.xy);
-    float df  = lxy * SHADOW_DISTORT + (1.0 - SHADOW_DISTORT);
+    // v1.1.2 FIX: \`sp\` was read before it was declared (\`length(sp.xy)\`), so every
+    // program that included this file failed to compile when SHADOWS was on —
+    // this was the "shadows don't load at all" bug. We now project the
+    // un-offset position first (1 extra mat4×vec4, only for shadowed pixels)
+    // to learn the local distortion factor, then offset and project again.
+    vec3 sp0 = (shadowProjection * (shadowModelView * vec4(feetPos, 1.0))).xyz;
+    float df = length(sp0.xy) * SHADOW_DISTORT + (1.0 - SHADOW_DISTORT);
 
-    // world size of one shadow texel at this spot -> bias scales with it (no acne, no peter-panning)
-    // texel = constant * df² — precompute the constant outside the loop (this code is per-pixel, but the
-    // compiler already CSEs it). mad-friendlier form:
+    // World size of one shadow texel at this spot -> normal-offset bias scales
+    // with it (no acne up close, no peter-panning far away).
+    // d(distorted)/d(x) = (1-k)/df²  =>  world texel = base * df² / (1-k)
     float invDist = 1.0 / (1.0 - SHADOW_DISTORT);
     float texel   = (2.0 * shadowDistance) * rcpSafe(float(shadowMapResolution)) * invDist * (df * df);
     float offs    = texel * (0.6 + 1.6 * (1.0 - sat(NdotL)));
 
-    sp = (shadowProjection * (shadowModelView * vec4(feetPos + offsetDir * offs, 1.0))).xyz;
-    df = length(sp.xy) * SHADOW_DISTORT + (1.0 - SHADOW_DISTORT);
-    sp.xy /= df;
-    sp.z  *= 0.2;
-    sp = sp * 0.5 + 0.5;
-    sp.z -= 0.00004;
+    vec3 sp = shadowProject(feetPos + offsetDir * offs);
+    sp.z -= 0.00004;            // tiny constant depth bias on top of the normal offset
+
+    // Outside the shadow map -> fully lit (avoids clamped-edge garbage)
+    if (sp.x <= 0.0 || sp.x >= 1.0 || sp.y <= 0.0 || sp.y >= 1.0 || sp.z >= 1.0) return vec3(1.0);
 
 #ifdef LOW_RES_SHADOW
     // snap to half-resolution grid → 4× fewer unique texture cache lines
@@ -347,11 +361,14 @@ vec3 getLighting(vec3 albedo, vec3 normal, vec2 lm, vec3 feetPos, float foliage,
                  float rain, vec3 sunDirW, vec3 lightDirW, vec3 fogLin) {
     // ── END short-circuit: overhead ambient only, skip all shadow / normal logic ──
 #ifdef END
-    // Inlined pow(x, 3) = x*x*x (saves 1 pow instruction)
+    // Inlined pow(x, 3) = x*x*x (saves 1 pow instruction).
+    // v1.1.2 FIX: this used to be named \`blI\` too, which collided with the
+    // later declaration (dead code after return is still compiled) -> End
+    // dimension failed to compile on every preset.
     float lx = lm.x;
-    float blI = (lx * lx * lx) * 1.5 * BLOCKLIGHT_I;
-    return albedo * (vec3(MIN_LIGHT) + BLOCKLIGHT_COL * blI);
-#endif
+    float endBl = (lx * lx * lx) * 1.5 * BLOCKLIGHT_I;
+    return albedo * (vec3(MIN_LIGHT) + BLOCKLIGHT_COL * endBl);
+#else
 
     // Pre-cache lm² and lm³ for ALL lighting paths (saves 2 muls per reuse)
     float lm2 = lm.x * lm.x;
@@ -441,6 +458,7 @@ vec3 getLighting(vec3 albedo, vec3 normal, vec2 lm, vec3 feetPos, float foliage,
 #endif
     color *= 1.0 - 0.7 * darknessFactor;
     return color;
+#endif // END
 }
 `;
 

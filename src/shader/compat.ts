@@ -71,7 +71,7 @@ export const VERSION_TARGETS: Record<VersionTargetId, VersionTarget> = {
 
 export const LOADER_META: Record<LoaderId, { label: string; desc: string; emoji: string }> = {
   both: { label: 'Both (recommended)', desc: 'Runs on both Iris and OptiFine. Iris-only directives stay in the file — OptiFine ignores them.', emoji: '🔀' },
-  iris: { label: 'Iris / Sodium', desc: 'Enables Iris-only features: program.enabled and shadow.enabled → passes are fully skipped when unused.', emoji: '🌈' },
+  iris: { label: 'Iris / Sodium', desc: 'Tuned for Iris + Sodium. Unused passes (shadow, water fog, bloom) are skipped via program.*.enabled.', emoji: '🌈' },
   optifine: { label: 'OptiFine', desc: 'Removes all Iris-only directives and uses the classic menu syntax. Safest for old OptiFine builds.', emoji: '🔧' },
 };
 

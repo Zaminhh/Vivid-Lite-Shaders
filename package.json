@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "validate": "tsx scripts/validate-glsl.ts",
+    "packs": "tsx scripts/build-packs.ts",
+    "serve": "npm run packs -- --tag test && python3 -m http.server 8080 --bind 0.0.0.0 --directory release"
   },
   "dependencies": {
     "clsx": "2.1.1",
@@ -22,7 +25,9 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
+    "glslang-validator-prebuilt-predownloaded": "^0.0.2",
     "tailwindcss": "4.1.17",
+    "tsx": "^4.23.15",
     "typescript": "5.9.3",
     "vite": "7.3.2",
     "vite-plugin-singlefile": "2.3.0"

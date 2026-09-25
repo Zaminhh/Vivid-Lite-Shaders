@@ -426,18 +426,23 @@ const float eyeBrightnessHalflife = 6.0;
 // ---------------------------------------------------------------------------
 export function buildShadersProperties(s: ShaderSettings, presetLabel: string): string {
   const vt = VERSION_TARGETS[s.mcVersion];
-  const irisOK = s.loader !== 'optifine';
-  const irisBlock = irisOK
-    ? `# Iris-only: skip whole programs when their feature is off (big FPS win)
+  // v1.1.2 — program toggles are emitted for EVERY loader.
+  //  * `program.<name>.enabled=<expr>` is evaluated against the live option
+  //    values by both OptiFine (documented in shaders.txt) and Iris
+  //    (ShaderPack -> BooleanParser), so flipping SHADOWS in the in-game menu
+  //    really skips the shadow pass on both.
+  //  * The old `shadow.enabled=SHADOWS` line was WRONG: Iris only accepts the
+  //    literal true/false/1/0 for that key and logged
+  //    "Unexpected value for boolean key shadow.enabled" — the pass was never
+  //    toggled. It is gone.
+  const programToggles = `# Skip whole programs when their feature is off (big FPS win).
+# Works on Iris AND OptiFine; old OptiFine builds that don't know the key ignore it.
+program.shadow.enabled=SHADOWS
 program.composite.enabled=WATER_FOG
 program.composite1.enabled=BLOOM
 program.world1/composite.enabled=WATER_FOG
 program.world1/composite1.enabled=BLOOM
 program.world-1/composite1.enabled=BLOOM
-shadow.enabled=SHADOWS
-`
-    : `# (Iris-only program toggles omitted for OptiFine build. Unused passes still
-#  cost almost nothing because their bodies are #ifdef'd out.)
 `;
 
   return `# ============================================================
@@ -462,7 +467,7 @@ shadowEntities=${s.entityShadows ? 'true' : 'false'}
 shadowPlayer=${s.entityShadows ? 'true' : 'false'}
 shadowBlockEntities=${s.entityShadows ? 'true' : 'false'}
 
-${irisBlock}
+${programToggles}
 profile.EXTRA_POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=32.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG !WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION !WATER_WAVES !HAND_LIGHT !EMISSIVE_BLOCKS !NIGHT_DESATURATION !ROUND_SUN !STARS !MILKY_WAY !MOON_GLOW SKIP_SKY_PROC SKIP_TONEMAP SKIP_DITHERING SIMPLE_WATER LOW_RES_SHADOW CULL_DISTANCE=32.0 FOG_QUALITY=0 TONEMAP=0 MOONLIGHT=0.50 STAR_BRIGHTNESS=0.00 NIGHT_FOG=0.00
 profile.LOW_POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=32.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION !WATER_WAVES !EMISSIVE_BLOCKS !NIGHT_DESATURATION !ROUND_SUN !STARS !MILKY_WAY !MOON_GLOW SKIP_DITHERING SIMPLE_WATER CULL_DISTANCE=48.0 FOG_QUALITY=1 MOONLIGHT=0.75 STAR_BRIGHTNESS=0.50 NIGHT_FOG=0.50
 profile.POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=48.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION CULL_DISTANCE=64.0 FOG_QUALITY=1
@@ -951,7 +956,22 @@ export function buildChangelog(): string {
   VIVID LITE SHADERS  —  CHANGELOG
 ================================================================
 
-v${VERSION}  (More optimizations)
+v${VERSION}  (Shadow fix — work in progress)
+${'-'.repeat(30)}
+* FIXED: shadows never loaded. lib/shadows.glsl read \`sp\` before declaring
+  it, so every shadow-enabled program failed to compile (all 4 buckets,
+  Iris + OptiFine). Shadow projection is now one shared helper that
+  mirrors the shadow pass distortion exactly.
+* FIXED: End dimension failed to compile (\`blI\` declared twice).
+* FIXED: SMALL_WAVE + water waves -> "#if with no expression" error.
+* FIXED: shaders.properties used \`shadow.enabled=SHADOWS\`, which Iris
+  rejects (literal true/false only). Replaced with
+  \`program.shadow.enabled=SHADOWS\`, honoured by both Iris and OptiFine.
++ Shadow samples outside the shadow map now return "lit" instead of
+  clamped-edge garbage.
++ Renamed the \`all\` local (built-in function name) for picky drivers.
+
+v1.1.1  (More optimizations)
 ${'-'.repeat(30)}
 + 8 new performance options:
     SKIP_PCF          : 1-tap shadow instead of 4-tap

@@ -151,7 +151,7 @@ void main() {
 #if defined WATER_WAVES && !defined SIMPLE_WATER
         // skip wave past CULL_DISTANCE AND past WAVE_CUTOFF — saves cos() calls
         if (abs(normal.y) > 0.5 && waterDist < CULL_DISTANCE && waterDist < WAVE_CUTOFF) {
-#if SMALL_WAVE
+#ifdef SMALL_WAVE   // v1.1.2: was "#if SMALL_WAVE" -> "#if with no expression" error when enabled
             // single-wave fallback (1 cos + 2 muls instead of 3 cos + 5 muls)
             float t = frameTimeCounter * 0.9;
             vec2  p = worldPos.xz;
