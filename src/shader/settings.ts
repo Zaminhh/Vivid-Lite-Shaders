@@ -88,19 +88,25 @@ export interface ShaderSettings {
   halfResBloom: boolean;
   skipSpecular: boolean;
   noColorTemp: boolean;
+  // BSL grade (v1.1.3) — final-pass color grading, all compile-time #defines
+  colorGrading: boolean;
+  gradeBlack: number;
+  gradeSplit: number;
+  gradeSunset: number;
+  gradeCurve: number;
 }
 
 export const OPTION_VALUES = {
   shadowRes: [512, 768, 1024, 1536, 2048],
-  shadowDistance: [48, 64, 80, 96, 128, 160],
+  shadowDistance: [32, 48, 64, 80, 96, 128, 160],
   sunPathRotation: [-60, -50, -40, -30, -20, -10, 0, 10, 20, 30, 40, 50, 60],
   intensity: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2.0],
   minLight: [0, 0.01, 0.02, 0.03, 0.05, 0.08, 0.12, 0.2],
   strength: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0],
-  waterAlpha: [0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+  waterAlpha: [0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9],
   fogDensity: [0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0],
   rainFog: [0.5, 0.75, 1.0, 1.5, 2.0, 3.0],
-  sunsetIntensity: [0.3, 0.5, 0.7, 0.85, 1.0, 1.2, 1.5],
+  sunsetIntensity: [0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 1.0, 1.2, 1.5],
   bloomStrength: [0.04, 0.08, 0.12, 0.16, 0.2, 0.3, 0.4],
   exposure: [0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.5],
   saturation: [0.8, 0.9, 1.0, 1.05, 1.1, 1.15, 1.2, 1.3, 1.4],
@@ -112,10 +118,14 @@ export const OPTION_VALUES = {
   waveCutoff: [24, 40, 60, 80, 120, 160, 200, 999],
   shadowCutoff: [32, 48, 64, 96, 128, 160, 999],
   fogCutoff: [48, 64, 96, 128, 160, 200, 256, 999],
-  nightBrightness: [0.4, 0.6, 0.8, 1.0, 1.2, 1.5, 2.0],
+  nightBrightness: [0.4, 0.6, 0.8, 1.0, 1.1, 1.2, 1.5, 2.0],
   moonlight: [0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0],
   starBrightness: [0, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0],
-  nightFog: [0, 0.5, 1.0, 1.5, 2.0],
+  nightFog: [0, 0.5, 0.75, 1.0, 1.5, 2.0],
+  gradeBlack: [0, 0.01, 0.02, 0.03, 0.04, 0.06],
+  gradeSplit: [0, 0.25, 0.5, 0.75, 1.0],
+  gradeSunset: [0, 0.5, 0.75, 1.0, 1.25, 1.5],
+  gradeCurve: [0, 0.15, 0.25, 0.35, 0.5],
 } as const;
 
 const BASE: ShaderSettings = {
@@ -139,6 +149,7 @@ const BASE: ShaderSettings = {
   skyLOD: true, smallWave: false, waveCutoff: 80, shadowCutoff: 999, vertexAO: false,
   fastNormalize: true, precomputedView: true, cheapEmissive: true, skipPcf: false,
   fogCutoff: 128, halfResBloom: false, skipSpecular: false, noColorTemp: false,
+  colorGrading: false, gradeBlack: 0.02, gradeSplit: 0.5, gradeSunset: 1.0, gradeCurve: 0.25,
 };
 
 export const PRESETS: Record<PresetId, ShaderSettings> = {
@@ -214,8 +225,13 @@ export const PRESETS: Record<PresetId, ShaderSettings> = {
     torchFlicker: true, emissiveStrength: 1.5,
     wavingStrength: 1.25, waterAlpha: 0.75,
     cloudTranslucency: true, sunsetIntensity: 1.5, rainFog: 2.0,
-    bloomStrength: 0.2, saturation: 1.15, vibrance: 0.3, contrast: 1.1,
+    // v1.1.3 "BSL grade": the old Extra High (sat 1.15 / bloom 0.20 / contrast 1.10)
+    // looked pale because the strong additive bloom lifted the black floor and the
+    // linear contrast clipped highlights. Now: less haze, a black point, blue-shadow /
+    // warm-highlight split toning, golden-hour warmth and a filmic S-curve.
+    bloomStrength: 0.16, saturation: 1.2, vibrance: 0.3, contrast: 1.05,
     vignetteStrength: 0.75,
+    colorGrading: true, gradeBlack: 0.02, gradeSplit: 0.75, gradeSunset: 1.25, gradeCurve: 0.35,
     nightBrightness: 1.1, moonlight: 1.5, starBrightness: 1.5,
     milkyWay: true, moonGlow: true, nightFog: 1.5,
   },
@@ -303,6 +319,113 @@ export function applyPresetKeepCompat(preset: ShaderSettings, current: ShaderSet
   return { ...preset, mcVersion: current.mcVersion, loader: current.loader };
 }
 
+
+// ---------------------------------------------------------------------------
+// In-game option table + profile generator (v1.1.3)
+// ---------------------------------------------------------------------------
+// ONE table maps every settings field to its in-game option name and value
+// format. Profiles are generated from PRESETS through it, so each
+// profile.X line sets EVERY switchable option. (Before v1.1.3 the profile
+// lines were hand-written and incomplete: picking "Extra High" in-game kept
+// Medium's saturation / contrast / bloom — one reason it looked washed out.)
+type OptKind = 'bool' | 'int' | 'f1' | 'f2';
+export const OPTION_TABLE: { name: string; kind: OptKind; get: (s: ShaderSettings) => boolean | number }[] = [
+  { name: 'SHADOWS', kind: 'bool', get: (s) => s.shadows },
+  { name: 'shadowMapResolution', kind: 'int', get: (s) => s.shadowRes },
+  { name: 'shadowDistance', kind: 'f1', get: (s) => s.shadowDistance },
+  { name: 'SHADOW_SOFTNESS', kind: 'int', get: (s) => s.shadowSoftness },
+  { name: 'COLORED_SHADOWS', kind: 'bool', get: (s) => s.coloredShadows },
+  { name: 'sunPathRotation', kind: 'f1', get: (s) => s.sunPathRotation },
+  { name: 'SUNLIGHT_I', kind: 'f2', get: (s) => s.sunlight },
+  { name: 'AMBIENT_I', kind: 'f2', get: (s) => s.ambient },
+  { name: 'BLOCKLIGHT_I', kind: 'f2', get: (s) => s.blocklight },
+  { name: 'BLOCKLIGHT_WARMTH', kind: 'int', get: (s) => s.blocklightWarmth },
+  { name: 'MIN_LIGHT', kind: 'f2', get: (s) => s.minLight },
+  { name: 'HAND_LIGHT', kind: 'bool', get: (s) => s.handLight },
+  { name: 'EMISSIVE_BLOCKS', kind: 'bool', get: (s) => s.emissive },
+  { name: 'EMISSIVE_STRENGTH', kind: 'f2', get: (s) => s.emissiveStrength },
+  { name: 'NIGHT_DESATURATION', kind: 'bool', get: (s) => s.nightDesat },
+  { name: 'TORCH_FLICKER', kind: 'bool', get: (s) => s.torchFlicker },
+  { name: 'FAKE_AO', kind: 'bool', get: (s) => s.ao },
+  { name: 'CAVE_LIGHTING', kind: 'int', get: (s) => s.caveLighting },
+  { name: 'WAVING_PLANTS', kind: 'bool', get: (s) => s.wavingPlants },
+  { name: 'WAVING_LEAVES', kind: 'bool', get: (s) => s.wavingLeaves },
+  { name: 'WAVING_STRENGTH', kind: 'f2', get: (s) => s.wavingStrength },
+  { name: 'WATER_WAVES', kind: 'bool', get: (s) => s.waterWaves },
+  { name: 'WATER_REFLECTION', kind: 'bool', get: (s) => s.waterReflection },
+  { name: 'WATER_FOG', kind: 'bool', get: (s) => s.waterFog },
+  { name: 'WATER_ALPHA', kind: 'f2', get: (s) => s.waterAlpha },
+  { name: 'WATER_TINT', kind: 'int', get: (s) => s.waterTint },
+  { name: 'ROUND_SUN', kind: 'bool', get: (s) => s.roundSun },
+  { name: 'STARS', kind: 'bool', get: (s) => s.stars },
+  { name: 'FOG_DENSITY', kind: 'f2', get: (s) => s.fogDensity },
+  { name: 'RAIN_FOG', kind: 'f2', get: (s) => s.rainFog },
+  { name: 'SUNSET_INTENSITY', kind: 'f2', get: (s) => s.sunsetIntensity },
+  { name: 'CLOUD_TRANSLUCENCY', kind: 'bool', get: (s) => s.cloudTranslucency },
+  { name: 'NIGHT_BRIGHTNESS', kind: 'f2', get: (s) => s.nightBrightness },
+  { name: 'MOONLIGHT', kind: 'f2', get: (s) => s.moonlight },
+  { name: 'NIGHT_TINT', kind: 'int', get: (s) => s.nightTint },
+  { name: 'STAR_BRIGHTNESS', kind: 'f2', get: (s) => s.starBrightness },
+  { name: 'MILKY_WAY', kind: 'bool', get: (s) => s.milkyWay },
+  { name: 'MOON_GLOW', kind: 'bool', get: (s) => s.moonGlow },
+  { name: 'NIGHT_FOG', kind: 'f2', get: (s) => s.nightFog },
+  { name: 'BLOOM', kind: 'bool', get: (s) => s.bloom },
+  { name: 'BLOOM_STRENGTH', kind: 'f2', get: (s) => s.bloomStrength },
+  { name: 'TONEMAP', kind: 'int', get: (s) => s.tonemap },
+  { name: 'EXPOSURE', kind: 'f2', get: (s) => s.exposure },
+  { name: 'SATURATION', kind: 'f2', get: (s) => s.saturation },
+  { name: 'VIBRANCE', kind: 'f2', get: (s) => s.vibrance },
+  { name: 'CONTRAST', kind: 'f2', get: (s) => s.contrast },
+  { name: 'VIGNETTE', kind: 'bool', get: (s) => s.vignette },
+  { name: 'VIGNETTE_STRENGTH', kind: 'f2', get: (s) => s.vignetteStrength },
+  { name: 'COLOR_TEMP', kind: 'f2', get: (s) => s.colorTemp },
+  { name: 'COLOR_GRADING', kind: 'bool', get: (s) => s.colorGrading },
+  { name: 'GRADE_BLACK', kind: 'f2', get: (s) => s.gradeBlack },
+  { name: 'GRADE_SPLIT', kind: 'f2', get: (s) => s.gradeSplit },
+  { name: 'GRADE_SUNSET', kind: 'f2', get: (s) => s.gradeSunset },
+  { name: 'GRADE_CURVE', kind: 'f2', get: (s) => s.gradeCurve },
+  { name: 'SKIP_SKY_PROC', kind: 'bool', get: (s) => s.skipSky || s.fogQuality === 0 },
+  { name: 'SKIP_TONEMAP', kind: 'bool', get: (s) => s.skipTonemap },
+  { name: 'SKIP_DITHERING', kind: 'bool', get: (s) => s.skipDithering },
+  { name: 'SIMPLE_WATER', kind: 'bool', get: (s) => s.simpleWater },
+  { name: 'LOW_RES_SHADOW', kind: 'bool', get: (s) => s.lowResShadow },
+  { name: 'CULL_DISTANCE', kind: 'f1', get: (s) => s.cullDistance },
+  { name: 'FOG_QUALITY', kind: 'int', get: (s) => s.fogQuality },
+  { name: 'SKY_LOD', kind: 'bool', get: (s) => s.skyLOD },
+  { name: 'SMALL_WAVE', kind: 'bool', get: (s) => s.smallWave },
+  { name: 'VERTEX_AO', kind: 'bool', get: (s) => s.vertexAO },
+  { name: 'FAST_NORMALIZE', kind: 'bool', get: (s) => s.fastNormalize },
+  { name: 'PRECOMPUTED_VIEW', kind: 'bool', get: (s) => s.precomputedView },
+  { name: 'CHEAP_EMISSIVE', kind: 'bool', get: (s) => s.cheapEmissive },
+  { name: 'SKIP_PCF', kind: 'bool', get: (s) => s.skipPcf },
+  { name: 'HALF_RES_BLOOM', kind: 'bool', get: (s) => s.halfResBloom },
+  { name: 'SKIP_SPECULAR', kind: 'bool', get: (s) => s.skipSpecular },
+  { name: 'NO_COLOR_TEMP', kind: 'bool', get: (s) => s.noColorTemp },
+  { name: 'WAVE_CUTOFF', kind: 'f1', get: (s) => s.waveCutoff },
+  { name: 'SHADOW_CUTOFF', kind: 'f1', get: (s) => s.shadowCutoff },
+  { name: 'FOG_CUTOFF', kind: 'f1', get: (s) => s.fogCutoff },
+];
+
+export const PROFILE_NAMES: Record<PresetId, string> = {
+  extraPotato: 'EXTRA_POTATO', lowPotato: 'LOW_POTATO', potato: 'POTATO', highPotato: 'HIGH_POTATO',
+  low: 'LOW', medium: 'MEDIUM', high: 'HIGH', extraHigh: 'EXTRA_HIGH',
+};
+
+/** One option token for a profile line: `NAME`, `!NAME` or `NAME=value`. */
+function profileToken(o: (typeof OPTION_TABLE)[number], s: ShaderSettings): string {
+  const v = o.get(s);
+  if (o.kind === 'bool') return v ? o.name : `!${o.name}`;
+  const n = v as number;
+  return `${o.name}=${o.kind === 'int' ? String(n) : o.kind === 'f1' ? f1(n) : f2(n)}`;
+}
+
+/** profile.X=... lines for every preset, in fixed PRESETS order (deterministic). */
+export function buildProfiles(): string {
+  return (Object.keys(PROFILE_NAMES) as PresetId[])
+    .map((id) => `profile.${PROFILE_NAMES[id]}=${OPTION_TABLE.map((o) => profileToken(o, PRESETS[id])).join(' ')}`)
+    .join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // shaders/lib/settings.glsl
 // ---------------------------------------------------------------------------
@@ -386,6 +509,12 @@ ${flag('BLOOM', s.bloom)}
 ${flag('VIGNETTE', s.vignette)}
 #define VIGNETTE_STRENGTH ${f2(s.vignetteStrength)} ${list(OPTION_VALUES.vignetteStrength, f2)}
 #define COLOR_TEMP ${f2(s.colorTemp)} ${list(OPTION_VALUES.colorTemp, f2)}
+// BSL grade (v1.1.3): ~12 ALU per pixel in final, no extra texture reads or passes
+${flag('COLOR_GRADING', s.colorGrading)}
+#define GRADE_BLACK ${f2(s.gradeBlack)} ${list(OPTION_VALUES.gradeBlack, f2)}
+#define GRADE_SPLIT ${f2(s.gradeSplit)} ${list(OPTION_VALUES.gradeSplit, f2)}
+#define GRADE_SUNSET ${f2(s.gradeSunset)} ${list(OPTION_VALUES.gradeSunset, f2)}
+#define GRADE_CURVE ${f2(s.gradeCurve)} ${list(OPTION_VALUES.gradeCurve, f2)}
 
 // ---------------- PERFORMANCE ----------------
 ${flag('SKIP_SKY_PROC', s.skipSky || s.fogQuality === 0)}
@@ -426,7 +555,7 @@ const float eyeBrightnessHalflife = 6.0;
 // ---------------------------------------------------------------------------
 export function buildShadersProperties(s: ShaderSettings, presetLabel: string): string {
   const vt = VERSION_TARGETS[s.mcVersion];
-  // v1.1.2 — program toggles are emitted for EVERY loader.
+  // v1.1.3 — program toggles are emitted for EVERY loader.
   //  * `program.<name>.enabled=<expr>` is evaluated against the live option
   //    values by both OptiFine (documented in shaders.txt) and Iris
   //    (ShaderPack -> BooleanParser), so flipping SHADOWS in the in-game menu
@@ -468,25 +597,18 @@ shadowPlayer=${s.entityShadows ? 'true' : 'false'}
 shadowBlockEntities=${s.entityShadows ? 'true' : 'false'}
 
 ${programToggles}
-profile.EXTRA_POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=32.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG !WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION !WATER_WAVES !HAND_LIGHT !EMISSIVE_BLOCKS !NIGHT_DESATURATION !ROUND_SUN !STARS !MILKY_WAY !MOON_GLOW SKIP_SKY_PROC SKIP_TONEMAP SKIP_DITHERING SIMPLE_WATER LOW_RES_SHADOW CULL_DISTANCE=32.0 FOG_QUALITY=0 TONEMAP=0 MOONLIGHT=0.50 STAR_BRIGHTNESS=0.00 NIGHT_FOG=0.00
-profile.LOW_POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=32.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION !WATER_WAVES !EMISSIVE_BLOCKS !NIGHT_DESATURATION !ROUND_SUN !STARS !MILKY_WAY !MOON_GLOW SKIP_DITHERING SIMPLE_WATER CULL_DISTANCE=48.0 FOG_QUALITY=1 MOONLIGHT=0.75 STAR_BRIGHTNESS=0.50 NIGHT_FOG=0.50
-profile.POTATO=!SHADOWS shadowMapResolution=512 shadowDistance=48.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !FAKE_AO !TORCH_FLICKER !WATER_REFLECTION CULL_DISTANCE=64.0 FOG_QUALITY=1
-profile.HIGH_POTATO=SHADOWS shadowMapResolution=512 shadowDistance=48.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS !BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES !VIGNETTE !TORCH_FLICKER !WATER_REFLECTION LOW_RES_SHADOW CULL_DISTANCE=96.0 FOG_QUALITY=1
-profile.LOW=SHADOWS shadowMapResolution=768 shadowDistance=64.0 SHADOW_SOFTNESS=0 !COLORED_SHADOWS BLOOM !WATER_FOG WAVING_PLANTS !WAVING_LEAVES VIGNETTE CULL_DISTANCE=128.0 FOG_QUALITY=2
-profile.MEDIUM=SHADOWS shadowMapResolution=1024 shadowDistance=96.0 SHADOW_SOFTNESS=1 !COLORED_SHADOWS BLOOM WATER_FOG WAVING_PLANTS WAVING_LEAVES VIGNETTE FOG_QUALITY=2
-profile.HIGH=SHADOWS shadowMapResolution=2048 shadowDistance=128.0 SHADOW_SOFTNESS=2 COLORED_SHADOWS BLOOM WATER_FOG WAVING_PLANTS WAVING_LEAVES VIGNETTE TORCH_FLICKER CLOUD_TRANSLUCENCY FOG_QUALITY=2
-profile.EXTRA_HIGH=SHADOWS shadowMapResolution=2048 shadowDistance=160.0 SHADOW_SOFTNESS=2 COLORED_SHADOWS BLOOM WATER_FOG WAVING_PLANTS WAVING_LEAVES VIGNETTE TORCH_FLICKER CLOUD_TRANSLUCENCY FOG_QUALITY=2 MILKY_WAY MOON_GLOW MOONLIGHT=1.50 STAR_BRIGHTNESS=1.50 NIGHT_BRIGHTNESS=1.10 NIGHT_FOG=1.50
+${buildProfiles()}
 
 ${vt.simpleMenu
-    ? `screen=<profile> SHADOWS shadowMapResolution shadowDistance SHADOW_SOFTNESS SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I MIN_LIGHT NIGHT_BRIGHTNESS MOONLIGHT STAR_BRIGHTNESS WAVING_PLANTS WAVING_LEAVES WATER_WAVES WATER_REFLECTION BLOOM BLOOM_STRENGTH TONEMAP EXPOSURE SATURATION CONTRAST VIGNETTE FOG_QUALITY SIMPLE_WATER SKIP_SKY_PROC`
+    ? `screen=<profile> SHADOWS shadowMapResolution shadowDistance SHADOW_SOFTNESS SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I MIN_LIGHT NIGHT_BRIGHTNESS MOONLIGHT STAR_BRIGHTNESS WAVING_PLANTS WAVING_LEAVES WATER_WAVES WATER_REFLECTION BLOOM BLOOM_STRENGTH TONEMAP EXPOSURE SATURATION CONTRAST VIGNETTE COLOR_GRADING FOG_QUALITY SIMPLE_WATER SKIP_SKY_PROC`
     : `screen=<profile> <empty> [SHADOW_SCREEN] [LIGHTING_SCREEN] [NIGHT_SCREEN] [WORLD_SCREEN] [POST_SCREEN] [PERF_SCREEN]
 screen.SHADOW_SCREEN=SHADOWS shadowMapResolution shadowDistance SHADOW_SOFTNESS COLORED_SHADOWS LOW_RES_SHADOW sunPathRotation
 screen.LIGHTING_SCREEN=SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I BLOCKLIGHT_WARMTH MIN_LIGHT HAND_LIGHT EMISSIVE_BLOCKS EMISSIVE_STRENGTH TORCH_FLICKER FAKE_AO CAVE_LIGHTING
 screen.NIGHT_SCREEN=NIGHT_BRIGHTNESS MOONLIGHT NIGHT_TINT NIGHT_DESATURATION <empty> STARS STAR_BRIGHTNESS MILKY_WAY MOON_GLOW NIGHT_FOG
 screen.WORLD_SCREEN=WAVING_PLANTS WAVING_LEAVES WAVING_STRENGTH WATER_WAVES WATER_REFLECTION WATER_FOG WATER_ALPHA WATER_TINT SIMPLE_WATER FOG_DENSITY RAIN_FOG FOG_QUALITY SUNSET_INTENSITY CLOUD_TRANSLUCENCY
-screen.POST_SCREEN=BLOOM BLOOM_STRENGTH TONEMAP EXPOSURE SATURATION VIBRANCE CONTRAST VIGNETTE VIGNETTE_STRENGTH COLOR_TEMP
+screen.POST_SCREEN=BLOOM BLOOM_STRENGTH TONEMAP EXPOSURE SATURATION VIBRANCE CONTRAST VIGNETTE VIGNETTE_STRENGTH COLOR_TEMP <empty> <empty> COLOR_GRADING GRADE_BLACK GRADE_SPLIT GRADE_SUNSET GRADE_CURVE
 screen.PERF_SCREEN=LOW_RES_SHADOW SIMPLE_WATER FOG_QUALITY CULL_DISTANCE <empty> SKIP_SKY_PROC SKIP_TONEMAP SKIP_DITHERING`}
-sliders=shadowDistance sunPathRotation SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I MIN_LIGHT EMISSIVE_STRENGTH WAVING_STRENGTH WATER_ALPHA FOG_DENSITY RAIN_FOG SUNSET_INTENSITY BLOOM_STRENGTH EXPOSURE SATURATION VIBRANCE CONTRAST VIGNETTE_STRENGTH COLOR_TEMP CULL_DISTANCE NIGHT_BRIGHTNESS MOONLIGHT STAR_BRIGHTNESS NIGHT_FOG
+sliders=shadowDistance sunPathRotation SUNLIGHT_I AMBIENT_I BLOCKLIGHT_I MIN_LIGHT EMISSIVE_STRENGTH WAVING_STRENGTH WATER_ALPHA FOG_DENSITY RAIN_FOG SUNSET_INTENSITY BLOOM_STRENGTH EXPOSURE SATURATION VIBRANCE CONTRAST VIGNETTE_STRENGTH COLOR_TEMP CULL_DISTANCE NIGHT_BRIGHTNESS MOONLIGHT STAR_BRIGHTNESS NIGHT_FOG GRADE_BLACK GRADE_SPLIT GRADE_SUNSET GRADE_CURVE
 `;
 }
 
@@ -584,6 +706,16 @@ option.CONTRAST=Contrast
 option.VIGNETTE=Vignette
 option.VIGNETTE_STRENGTH=Vignette Strength
 option.COLOR_TEMP=Color Temperature
+option.COLOR_GRADING=BSL Color Grade
+option.COLOR_GRADING.comment=Blue shadows, warm highlights, golden-hour warmth and a filmic curve. ~12 ALU per pixel, no extra pass.
+option.GRADE_BLACK=Black Point
+option.GRADE_BLACK.comment=Pulls bloom/fog haze back to black. Cures the pale, washed-out look.
+option.GRADE_SPLIT=Split Toning
+option.GRADE_SPLIT.comment=Shadows lean blue, highlights lean warm (the BSL signature).
+option.GRADE_SUNSET=Golden Hour Warmth
+option.GRADE_SUNSET.comment=Extra orange warmth on lit surfaces around sunrise/sunset.
+option.GRADE_CURVE=Filmic Contrast
+option.GRADE_CURVE.comment=Smooth S-curve: deeper shadows and richer mids without clipping highlights.
 
 option.SKIP_SKY_PROC=Skip procedural sky
 option.SKIP_TONEMAP=Skip tonemap curve
@@ -956,7 +1088,7 @@ export function buildChangelog(): string {
   VIVID LITE SHADERS  —  CHANGELOG
 ================================================================
 
-v${VERSION}  (Shadow fix — work in progress)
+v${VERSION}  (Shadow fix & BSL grade — work in progress)
 ${'-'.repeat(30)}
 * FIXED: shadows never loaded. lib/shadows.glsl read \`sp\` before declaring
   it, so every shadow-enabled program failed to compile (all 4 buckets,
@@ -970,6 +1102,17 @@ ${'-'.repeat(30)}
 + Shadow samples outside the shadow map now return "lit" instead of
   clamped-edge garbage.
 + Renamed the \`all\` local (built-in function name) for picky drivers.
++ Extra High "BSL grade": new COLOR_GRADING block in final (black point,
+  blue-shadow / warm-highlight split toning, golden-hour warmth computed
+  per vertex, filmic S-curve). ~12 ALU per pixel, no extra pass.
+  Extra High: bloom 0.16, saturation 1.20, contrast 1.05 + grade on.
++ New options: COLOR_GRADING, GRADE_BLACK, GRADE_SPLIT, GRADE_SUNSET,
+  GRADE_CURVE (Color & Post menu).
+* FIXED: in-game profiles were hand-written and incomplete — picking
+  Extra High in-game kept Medium's saturation/contrast/bloom. Profiles are
+  now generated from the preset table and set every option.
+* FIXED: some preset values were missing from the option lists
+  (e.g. NIGHT_BRIGHTNESS=1.10) and were silently ignored in-game.
 
 v1.1.1  (More optimizations)
 ${'-'.repeat(30)}

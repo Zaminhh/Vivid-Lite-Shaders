@@ -4,9 +4,9 @@
 //  README.txt, CHANGELOG.txt, the website UI) updates automatically.
 // ============================================================================
 
-export const VERSION = '1.1.2';
+export const VERSION = '1.1.3';
 
-/** e.g. "v1.1.2" */
+/** e.g. "v1.1.3" */
 export const VERSION_TAG = `v${VERSION}`;
 
 /** Header line shared by every generated GLSL / properties file. */

@@ -151,7 +151,7 @@ void main() {
 #if defined WATER_WAVES && !defined SIMPLE_WATER
         // skip wave past CULL_DISTANCE AND past WAVE_CUTOFF — saves cos() calls
         if (abs(normal.y) > 0.5 && waterDist < CULL_DISTANCE && waterDist < WAVE_CUTOFF) {
-#ifdef SMALL_WAVE   // v1.1.2: was "#if SMALL_WAVE" -> "#if with no expression" error when enabled
+#ifdef SMALL_WAVE   // v1.1.3: was "#if SMALL_WAVE" -> "#if with no expression" error when enabled
             // single-wave fallback (1 cos + 2 muls instead of 3 cos + 5 muls)
             float t = frameTimeCounter * 0.9;
             vec2  p = worldPos.xz;
@@ -747,11 +747,19 @@ export const PROG_FINAL = `${H('program/final.glsl')}
 
 varying vec2 texcoord;
 varying vec3 sunDirW;
+varying float gradeWarm;   // golden-hour weight, computed per VERTEX (4 verts) not per pixel
 
 #ifdef VSH
 void main() {
     texcoord = gl_MultiTexCoord0.xy;
     sunDirW  = normalize(mat3(gbufferModelViewInverse) * sunPosition);
+#if defined COLOR_GRADING && !defined NETHER && !defined END
+    // Sunset factor * (1 - rain): identical for the whole frame, so evaluating it
+    // in the vertex stage makes the golden-hour term free in the fragment stage.
+    gradeWarm = getSunsetFactor(sunDirW.y) * (1.0 - rainStrength) * GRADE_SUNSET;
+#else
+    gradeWarm = 0.0;
+#endif
     gl_Position = ftransform();
 }
 #endif
@@ -811,6 +819,38 @@ void main() {
     #endif
 #endif
     color = toSRGB(color);
+
+#ifdef COLOR_GRADING
+    // ── BSL grade (v1.1.3) ────────────────────────────────────────────────
+    // Why Extra High looked pale: additive bloom + fog raise the black floor,
+    // and the old linear contrast ((c-0.5)*k+0.5) clips highlights before it
+    // deepens shadows. This block fixes both for ~12 ALU/pixel, no texture
+    // reads, no extra pass. Every GRADE_* is a literal #define, so the tint
+    // vectors below are constant-folded by the compiler.
+    color = sat(color);
+
+    // 1) Black point: remap [GRADE_BLACK, 1] -> [0, 1]. One mad per channel.
+    color = sat((color - GRADE_BLACK) * (1.0 / (1.0 - GRADE_BLACK)));
+
+    // 2) Split toning, the BSL signature: shadows lean blue, highlights lean
+    //    warm. Weight by perceptual luma, so blue shadows / warm torches survive.
+    float gL  = luma(color);
+    float gHi = smoothstep(0.18, 0.80, gL);
+    vec3  shTint = mix(vec3(1.0), vec3(0.90, 0.97, 1.12), GRADE_SPLIT);
+    // highlight tint keeps most of the blue channel so a bright sky stays blue
+    // (a stronger blue cut turned the sky teal and white clouds peach at noon)
+    vec3  hiTint = mix(vec3(1.0), vec3(1.06, 1.00, 0.95), GRADE_SPLIT);
+    color *= mix(shTint, hiTint, gHi);
+
+    // 3) Golden hour: extra orange only on the lit part of the image, only
+    //    around sunrise/sunset, faded out by rain (weight from the vertex stage).
+    color *= mix(vec3(1.0), vec3(1.10, 0.99, 0.86), gradeWarm * gHi);
+
+    // 4) Filmic S-curve: mix toward smoothstep(0,1,c) = c²(3-2c). Deepens
+    //    shadows and enriches mids while 0 and 1 stay fixed (no clipping).
+    color = sat(color);
+    color = mix(color, color * color * (3.0 - 2.0 * color), GRADE_CURVE);
+#endif
 
     float l = luma(color);
     float s = max(max(color.r, color.g), color.b) - min(min(color.r, color.g), color.b);

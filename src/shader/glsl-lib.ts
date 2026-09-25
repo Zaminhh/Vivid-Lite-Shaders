@@ -306,7 +306,7 @@ vec3 getShadow(vec3 feetPos, vec3 offsetDir, float NdotL) {
     float fade = sat((dist - shadowDistance * 0.7) / (shadowDistance * 0.3));
     if (fade >= 1.0) return vec3(1.0);
 
-    // v1.1.2 FIX: \`sp\` was read before it was declared (\`length(sp.xy)\`), so every
+    // v1.1.3 FIX: \`sp\` was read before it was declared (\`length(sp.xy)\`), so every
     // program that included this file failed to compile when SHADOWS was on —
     // this was the "shadows don't load at all" bug. We now project the
     // un-offset position first (1 extra mat4×vec4, only for shadowed pixels)
@@ -362,7 +362,7 @@ vec3 getLighting(vec3 albedo, vec3 normal, vec2 lm, vec3 feetPos, float foliage,
     // ── END short-circuit: overhead ambient only, skip all shadow / normal logic ──
 #ifdef END
     // Inlined pow(x, 3) = x*x*x (saves 1 pow instruction).
-    // v1.1.2 FIX: this used to be named \`blI\` too, which collided with the
+    // v1.1.3 FIX: this used to be named \`blI\` too, which collided with the
     // later declaration (dead code after return is still compiled) -> End
     // dimension failed to compile on every preset.
     float lx = lm.x;

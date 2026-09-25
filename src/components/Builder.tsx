@@ -100,12 +100,21 @@ export default function Builder() {
     const con = s.contrast * (s.shadows ? 1.05 : 0.96) * (s.tonemap === 0 ? 0.94 : 1);
     let bright = s.exposure;
     let hue = 0;
+    // BSL grade preview: approximate the black point + S-curve as extra contrast,
+    // and split toning / warmth as a small saturation + sepia push.
+    let sepia = 0;
+    let conG = con;
+    if (s.colorGrading) {
+      conG = con * (1 + s.gradeBlack * 2 + s.gradeCurve * 0.35);
+      sat *= 1 + s.gradeSplit * 0.06;
+      sepia = isNight ? 0 : Math.min(0.25, s.gradeSplit * 0.06 + s.gradeSunset * 0.05);
+    }
     if (isNight) {
       bright *= 0.55 + s.nightBrightness * 0.3 + s.moonlight * 0.08;
       if (s.nightDesat) sat *= 0.7;
       hue = s.nightTint === 1 ? -22 : s.nightTint === 2 ? 28 : 0;
     }
-    return `saturate(${sat.toFixed(2)}) contrast(${con.toFixed(2)}) brightness(${bright.toFixed(2)}) hue-rotate(${hue}deg)`;
+    return `saturate(${sat.toFixed(2)}) contrast(${conG.toFixed(2)}) brightness(${bright.toFixed(2)}) sepia(${sepia.toFixed(2)}) hue-rotate(${hue}deg)`;
   })();
   const imgSrc = isNight ? IMAGES.previewNight : IMAGES.previewDay;
   const nightTintRgb = s.nightTint === 1 ? '20,110,120' : s.nightTint === 2 ? '90,55,150' : '40,70,160';
@@ -185,6 +194,11 @@ export default function Builder() {
         <Slider label="Color temperature" hint="Negative = cool, positive = warm" value={s.colorTemp} values={OPTION_VALUES.colorTemp} onChange={(v) => set('colorTemp', v)} format={(v) => v < 0 ? `${v} cool` : v > 0 ? `+${v} warm` : 'neutral'} />
         <Toggle label="Vignette" checked={s.vignette} onChange={(v) => set('vignette', v)} />
         <Slider label="Vignette strength" value={s.vignetteStrength} values={OPTION_VALUES.vignetteStrength} onChange={(v) => set('vignetteStrength', v)} format={f2} disabled={!s.vignette} />
+        <Toggle label="BSL color grade" hint="Blue shadows, warm highlights, golden-hour warmth, filmic curve. ~12 ALU/pixel, no extra pass." checked={s.colorGrading} onChange={(v) => set('colorGrading', v)} />
+        <Slider label="Black point" hint="Pulls bloom/fog haze back to black — cures the washed-out look" value={s.gradeBlack} values={OPTION_VALUES.gradeBlack} onChange={(v) => set('gradeBlack', v)} format={f2} disabled={!s.colorGrading} />
+        <Slider label="Split toning" hint="Shadows lean blue, highlights lean warm" value={s.gradeSplit} values={OPTION_VALUES.gradeSplit} onChange={(v) => set('gradeSplit', v)} format={fPct} disabled={!s.colorGrading} />
+        <Slider label="Golden-hour warmth" hint="Extra orange on lit surfaces around sunrise / sunset" value={s.gradeSunset} values={OPTION_VALUES.gradeSunset} onChange={(v) => set('gradeSunset', v)} format={f2} disabled={!s.colorGrading} />
+        <Slider label="Filmic contrast" hint="S-curve: deeper shadows, richer mids, no clipped highlights" value={s.gradeCurve} values={OPTION_VALUES.gradeCurve} onChange={(v) => set('gradeCurve', v)} format={fPct} disabled={!s.colorGrading} />
       </div>
     ),
     perf: (

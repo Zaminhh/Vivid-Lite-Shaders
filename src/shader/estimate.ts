@@ -3,7 +3,7 @@ import type { ShaderSettings } from './settings';
 export interface CostPart { key: string; label: string; cost: number; tip?: string; }
 
 const SHADOW_RES_COST: Record<number, number> = { 512:4, 768:6, 1024:9, 1536:14, 2048:20 };
-const SHADOW_DIST_FACTOR: Record<number, number> = { 48:0.7, 64:0.85, 80:1, 96:1.1, 128:1.35, 160:1.6 };
+const SHADOW_DIST_FACTOR: Record<number, number> = { 32:0.55, 48:0.7, 64:0.85, 80:1, 96:1.1, 128:1.35, 160:1.6 };
 
 export function estimateCost(s: ShaderSettings): { parts: CostPart[]; total: number; retention: number; savings: CostPart[] } {
   const parts: CostPart[] = [];
@@ -36,6 +36,7 @@ export function estimateCost(s: ShaderSettings): { parts: CostPart[]; total: num
   if (s.torchFlicker) parts.push({ key:'flicker', label:'Torch flicker', cost:0.3, tip:'One sin() call.' });
   if (s.ao) parts.push({ key:'ao', label:'Fake AO (corner darkening)', cost:0.2, tip:'lightmap² — free.' });
   if (s.cloudTranslucency) parts.push({ key:'cloud', label:'Cloud translucency', cost:0.5 });
+  if (s.colorGrading) parts.push({ key:'grade', label:'BSL color grade (final pass)', cost:0.3, tip:'~12 ALU per pixel, no texture reads. Sunset weight is computed per vertex.' });
   if (s.fogQuality === 2) parts.push({ key:'fog', label:'Full atmospheric fog', cost:1.2, tip:'FOG_QUALITY=1 (cheap linear) costs only 0.3%.' });
   else if (s.fogQuality === 1) parts.push({ key:'fog', label:'Cheap linear fog', cost:0.3 });
 

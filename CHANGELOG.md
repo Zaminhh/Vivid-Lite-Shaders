@@ -6,7 +6,9 @@ All notable changes to **Vivid Lite Shaders**.
 
 ---
 
-## [1.1.2] — Shadow fix *(work in progress — sections are added as each step is approved)*
+## [1.1.3] — Shadow fix & BSL grade *(work in progress — sections are added as each step is approved)*
+
+> v1.1.2 was never released; its fixes ship as part of v1.1.3.
 
 ### 🐛 Fixed — shadows never loaded
 - **Root cause:** `lib/shadows.glsl` → `getShadow()` read `sp.xy` *before* `sp` was declared. Every program that includes the shadow lib (`gbuffers_terrain`, `gbuffers_water`, `gbuffers_entities`) failed to compile whenever `SHADOWS` was on — on every version bucket and on both Iris and OptiFine.
@@ -18,6 +20,22 @@ All notable changes to **Vivid Lite Shaders**.
 ### 🐛 Fixed — other compile errors found by the new harness
 - End dimension: `blI` was declared twice in `getLighting()` → every End program failed to compile.
 - `#if SMALL_WAVE` → `#ifdef SMALL_WAVE` (an empty `#define` made `#if` error out when combined with water waves).
+
+### 🎨 Extra High — "BSL grade" (no longer washed out)
+**Why it looked pale:** strong additive bloom (0.20 × 2) plus fog raised the black floor, and the old linear contrast `(c − 0.5) × k + 0.5` clipped highlights before it deepened shadows. On top of that, the in-game `profile.EXTRA_HIGH` line never set `SATURATION` / `VIBRANCE` / `CONTRAST` / `BLOOM_STRENGTH`, so choosing Extra High from the in-game menu kept Medium's grade.
+
+New `COLOR_GRADING` block in `final.glsl` (≈12 ALU per pixel, no texture reads, no extra pass). All parameters are literal `#define`s, so the tint vectors are constant-folded:
+1. **Black point** `GRADE_BLACK` — remaps `[black, 1] → [0, 1]`, removing the bloom/fog haze floor.
+2. **Split toning** `GRADE_SPLIT` — shadows lean blue, highlights lean warm (the BSL signature). The highlight tint keeps most of the blue channel so a bright sky stays blue.
+3. **Golden-hour warmth** `GRADE_SUNSET` — extra orange on lit surfaces around sunrise/sunset, faded out by rain. The weight is computed **per vertex** (4 vertices for the full-screen quad), so it is free per pixel. Off in the Nether and End.
+4. **Filmic S-curve** `GRADE_CURVE` — blends toward `c²(3 − 2c)`: deeper shadows and richer mids, with 0 and 1 fixed (no clipping).
+
+Extra High now uses: bloom 0.20 → **0.16**, saturation 1.15 → **1.20**, contrast 1.10 → **1.05** (the S-curve adds contrast without clipping), plus `COLOR_GRADING` on (black 0.02, split 0.75, sunset 1.25, curve 0.35). The grade is off by default on the other presets, but every preset can enable it (new controls in the **Color & Post** menu and the web builder's Color tab).
+
+### 🐛 Fixed — in-game profiles were incomplete / invalid
+- `profile.*` lines are now **generated** from the preset table (`OPTION_TABLE` → `buildProfiles()`), so every profile sets **every** switchable option.
+- Several presets used values that were not in the option's allowed list (e.g. Extra High `NIGHT_BRIGHTNESS=1.10`, `WATER_ALPHA=0.75`; Low Potato `SUNSET_INTENSITY=0.60`; Extra/Low Potato `shadowDistance=32`). Iris and OptiFine ignore such values without any warning. The lists now include them.
+- `npm run validate` now also checks that every profile token is a real option with an allowed value.
 
 ### 🧪 Tooling
 - `npm run validate` — builds all 8 presets (+2 stress configs) × 4 version buckets × 3 loaders and compiles every `.vsh`/`.fsh` with Khronos glslangValidator (GLSL 1.20), resolving `#include` like Iris/OptiFine do.

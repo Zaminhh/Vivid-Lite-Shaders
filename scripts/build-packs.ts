@@ -44,6 +44,7 @@ async function main() {
   for (const mc of ['legacy', 'classic', 'modern'] as VersionTargetId[]) {
     jobs.push({ preset: 'medium', mc, loader: 'both' });
     jobs.push({ preset: 'highPotato', mc, loader: 'both' });
+    jobs.push({ preset: 'extraHigh', mc, loader: 'both' });
   }
 
   const rows: { file: string; sha: string; kb: string; preset: string; mc: string }[] = [];

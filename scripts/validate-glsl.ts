@@ -78,7 +78,45 @@ export function validateCombo(s: ShaderSettings, comboName: string, workDir: str
   return errors;
 }
 
+/**
+ * Profile sanity: every token in every profile.X line must name a real option in
+ * settings.glsl and (for value options) use a value from its //[...] list —
+ * Iris/OptiFine silently ignore anything else.
+ */
+export function validateProfiles(s: ShaderSettings, combo: string): string[] {
+  const files = buildPackFiles(s);
+  const glsl = files['shaders/lib/settings.glsl'];
+  const props = files['shaders/shaders.properties'];
+  const bools = new Set<string>();
+  const values = new Map<string, string[]>();
+  for (const line of glsl.split('\n')) {
+    let m = line.match(/^(?:\/\/)?#define\s+([A-Z_0-9]+)\s*(?:\/\/.*)?$/);
+    if (m) { bools.add(m[1]); continue; }
+    m = line.match(/^#define\s+([A-Z_0-9]+)\s+(-?[\d.]+)\s*\/\/\[([^\]]+)\]/) ?? line.match(/^const\s+(?:int|float)\s+(\w+)\s*=\s*(-?[\d.]+);\s*\/\/\[([^\]]+)\]/);
+    if (m) values.set(m[1], m[3].trim().split(/\s+/));
+  }
+  const problems: string[] = [];
+  for (const line of props.split('\n').filter((l) => l.startsWith('profile.'))) {
+    const [name, body] = line.split('=', 2).length === 2 ? [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)] : [line, ''];
+    for (const tok of body.trim().split(/\s+/)) {
+      if (tok.includes('=')) {
+        const [k, v] = tok.split('=');
+        const allowed = values.get(k);
+        if (!allowed) problems.push(`${combo} ${name}: unknown value option ${k}`);
+        else if (!allowed.includes(v)) problems.push(`${combo} ${name}: ${k}=${v} not in [${allowed.join(' ')}]`);
+      } else {
+        const k = tok.replace(/^!/, '');
+        if (!bools.has(k)) problems.push(`${combo} ${name}: unknown toggle ${k}`);
+      }
+    }
+  }
+  return problems;
+}
+
 function main() {
+  const profileProblems = validateProfiles({ ...PRESETS.medium, mcVersion: 'latest', loader: 'both' }, 'profiles');
+  if (profileProblems.length) { console.error(profileProblems.join('\n')); process.exit(1); }
+  console.log('✔ Profiles OK — every profile token is a real option with an allowed value.');
   const quick = process.argv.includes('--quick');
   const presets = (quick ? ['extraPotato', 'medium'] : Object.keys(PRESETS)) as PresetId[];
   const buckets: VersionTargetId[] = ['legacy', 'classic', 'modern', 'latest'];
